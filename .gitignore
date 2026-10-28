@@ -16,6 +16,7 @@ dist-ssr
 !.env.example
 .secrets/
 supabase/.temp/
+.video-tools/
 
 # Editor directories and files
 .vscode/*

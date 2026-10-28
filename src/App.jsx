@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, BookOpen, Camera, Check, Copy, Download, FileUp, FolderUp, MessageCircle, Moon, Search, Sun, Upload, Volume2 } from "lucide-react";
 import { getPapers } from "./lib/getpaper";
+import { supabase } from "./lib/supabase";
 import { uploadPapers } from "./lib/uploadPapers";
 import "./App.css";
 
@@ -14,6 +15,8 @@ export default function App() {
   const introVideo = useRef(null);
   const [showIntro, setShowIntro] = useState(true);
   const [discordCopied, setDiscordCopied] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [visitorCount, setVisitorCount] = useState(null);
   const [page, setPage] = useState("browse");
   const [theme, setTheme] = useState("light");
   const [papers, setPapers] = useState([]);
@@ -31,6 +34,28 @@ export default function App() {
     getPapers().then((data) => { if (!cancelled && data?.length) setPapers(data); }).catch(() => {}).finally(() => { if (!cancelled) setLoaded(true); });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    const hasVisited = localStorage.getItem("dsu-paper-hub-visitor-recorded") === "true";
+    supabase.rpc("record_site_visit", { should_increment: !hasVisited }).then(({ data, error }) => {
+      if (!error && typeof data === "number") {
+        setVisitorCount(data);
+        if (!hasVisited) localStorage.setItem("dsu-paper-hub-visitor-recorded", "true");
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!showIntro || !introVideo.current) return;
+    const video = introVideo.current;
+    video.muted = false;
+    video.volume = 1;
+    video.play().then(() => setSoundEnabled(true)).catch(() => {
+      video.muted = true;
+      video.play().catch(() => {});
+      setSoundEnabled(false);
+    });
+  }, [showIntro]);
 
   const displayedPapers = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -84,7 +109,8 @@ export default function App() {
     if (!introVideo.current) return;
     if (introVideo.current.ended) introVideo.current.currentTime = 0;
     introVideo.current.muted = false;
-    await introVideo.current.play().catch(() => {});
+    introVideo.current.volume = 1;
+    await introVideo.current.play().then(() => setSoundEnabled(true)).catch(() => {});
   };
   const leaveIntro = () => {
     introVideo.current?.pause();
@@ -97,23 +123,23 @@ export default function App() {
   };
 
   if (showIntro) return <main className="intro-page">
-    <video ref={introVideo} className="intro-video" src="/eshxxn-intro.mp4" autoPlay muted playsInline aria-label="Anime edit background video" />
+    <video ref={introVideo} className="intro-video" src="/eshxxn-intro.mp4" autoPlay playsInline aria-label="Anime edit background video" />
     <div className="intro-shade" />
     <section className="intro-content">
       <p className="intro-kicker">DSU PAPER HUB</p>
       <h1>MADE BY <span>ESHXXN</span></h1>
       <p className="intro-branch">CSE BRANCH</p>
-      <p className="intro-copy">A student-built space to find and share DSU question papers.</p>
+      <p className="intro-copy">A student-built space to find and share DSU question papers. Many features will be added in future updates. Stay tuned.</p>
       <div className="intro-actions">
         <button className="intro-enter" onClick={leaveIntro}>Enter Paper Hub <ArrowRight size={18} /></button>
-        <button className="intro-sound" onClick={enableIntroSound}><Volume2 size={18} /> Play with sound</button>
+        {!soundEnabled && <button className="intro-sound" onClick={enableIntroSound}><Volume2 size={18} /> Enable sound</button>}
       </div>
       <div className="intro-socials">
         <a href="https://www.instagram.com/urfavv.eshxxn_/" target="_blank" rel="noreferrer"><Camera size={18} /> Instagram</a>
         <button onClick={copyDiscord}><MessageCircle size={18} /> {discordCopied ? "Discord copied" : "Discord: __eshxxn."} <Copy size={15} /></button>
       </div>
     </section>
-    <p className="intro-duration">30 SECOND INTRO · ORIGINAL AUDIO</p>
+    <div className="intro-meta"><p>FULL VIDEO · ORIGINAL AUDIO</p><p>{visitorCount === null ? "Loading visitors…" : `${visitorCount.toLocaleString()} visitors`}</p></div>
   </main>;
 
   return <div className={`app-shell ${theme === "dark" ? "dark-theme" : ""}`}>
