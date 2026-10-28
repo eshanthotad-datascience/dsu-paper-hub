@@ -31,6 +31,7 @@ alter table public.papers add column if not exists upload_batch_id uuid;
 alter table public.papers alter column subject_code drop not null;
 alter table public.papers alter column drive_file_id drop not null;
 alter table public.papers alter column drive_url drop not null;
+alter table public.papers alter column uploaded_by drop not null;
 
 alter table public.papers enable row level security;
 drop policy if exists "Public can read papers" on public.papers;
