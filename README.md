@@ -1,3 +1,29 @@
+# DSU Paper Hub
+
+### Find it. Share it. Help the next batch.
+
+DSU Paper Hub is a student-built platform that makes it easier for Dayananda Sagar University students to find, upload, preview, and download previous question papers.
+
+## What you can do
+
+- Search papers by subject name or subject code
+- Filter by branch, cycle, semester, exam year, and paper type
+- Upload PDFs and PNGs without creating an account
+- Browse Chemistry and Physics cycle papers
+- Preview or download available papers directly
+- Access files stored securely in Google Drive
+
+## Built for DSU students
+
+Every uploaded paper can help juniors prepare better for upcoming exams. The platform keeps paper details searchable while files are stored in Google Drive.
+
+### Made by students, for students.
+
+> DSU Paper Hub is not an official Dayananda Sagar University website.
+
+WEB LINK :- https://dsu-paper-hub-l31l.vercel.app/
+
+
 # React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
