@@ -4,14 +4,6 @@ import { getPapers } from "./lib/getpaper";
 import { uploadPapers } from "./lib/uploadPapers";
 import "./App.css";
 
-const demoPapers = [
-  { id: "demo-1", title: "Data Structures", subject_code: "CS201", branch: "Computer Science (CSE)", semester: 3, exam_year: 2023, exam_type: "Mid Semester" },
-  { id: "demo-2", title: "Engineering Mathematics III", subject_code: "MA301", branch: "Electronics (ECE)", semester: 3, exam_year: 2024, exam_type: "End Semester" },
-  { id: "demo-3", title: "Software Engineering", subject_code: "CS403", branch: "Computer Science (CSE)", semester: 4, exam_year: 2024, exam_type: "Mid Semester" },
-  { id: "demo-4", title: "Computer Architecture", subject_code: "CS402", branch: "Information Science (ISE)", semester: 4, exam_year: 2024, exam_type: "End Semester" },
-  { id: "demo-5", title: "Database Management Systems", subject_code: "CS404", branch: "Computer Science (CSE)", semester: 4, exam_year: 2025, exam_type: "Mid Semester" },
-  { id: "demo-6", title: "Analysis of Algorithms", subject_code: "CS405", branch: "Computer Science (CSE)", semester: 4, exam_year: 2025, exam_type: "End Semester" },
-];
 const semesters = Array.from({ length: 8 }, (_, index) => index + 1);
 
 function SelectField({ label, value, onChange, children }) {
@@ -38,9 +30,10 @@ export default function App() {
   }, []);
 
   const displayedPapers = useMemo(() => {
-    const source = papers.length ? papers : demoPapers;
     const needle = search.trim().toLowerCase();
-    return source.filter((paper) => (!needle || `${paper.title} ${paper.subject_code || ""}`.toLowerCase().includes(needle)) && (!filters.branch || paper.branch === filters.branch) && (!filters.cycle || paper.cycle === filters.cycle) && (!filters.semester || String(paper.semester) === filters.semester) && (!filters.year || String(paper.exam_year) === filters.year) && (!filters.type || paper.exam_type === filters.type));
+    return papers
+      .filter((paper) => paper.file_url && (!needle || `${paper.title} ${paper.subject_code || ""}`.toLowerCase().includes(needle)) && (!filters.branch || paper.branch === filters.branch) && (!filters.cycle || paper.cycle === filters.cycle) && (!filters.semester || String(paper.semester) === filters.semester) && (!filters.year || String(paper.exam_year) === filters.year) && (!filters.type || paper.exam_type === filters.type))
+      .slice(0, 6);
   }, [filters, papers, search]);
   const setFilter = (name) => (event) => setFilters((current) => ({ ...current, [name]: event.target.value }));
   const setFormField = (name) => (event) => setForm((current) => ({ ...current, [name]: event.target.value }));

@@ -4,6 +4,7 @@ export async function getPapers({ search = "", semester = "" } = {}) {
   let query = supabase
     .from("papers")
     .select("*")
+    .not("drive_url", "is", null)
     .order("created_at", { ascending: false })
     .limit(100);
 
