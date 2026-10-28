@@ -22,7 +22,14 @@ export async function uploadPapers({ files, details }) {
   form.append("exam_year", String(details.year));
   form.append("exam_type", details.type);
   const { data, error } = await supabase.functions.invoke("upload-paper", { body: form });
-  if (error) throw error;
+  if (error) {
+    let message = "The upload service could not complete your request.";
+    if (error.context instanceof Response) {
+      const responseBody = await error.context.json().catch(() => null);
+      if (responseBody?.error) message = responseBody.error;
+    }
+    throw new Error(message);
+  }
   if (!data?.success) throw new Error(data?.error || "Upload failed.");
   return data.count;
 }
