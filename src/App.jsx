@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { BookOpen, Check, Download, FileUp, FolderUp, Moon, Search, Sun, Upload } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, BookOpen, Camera, Check, Copy, Download, FileUp, FolderUp, MessageCircle, Moon, Search, Sun, Upload, Volume2 } from "lucide-react";
 import { getPapers } from "./lib/getpaper";
 import { uploadPapers } from "./lib/uploadPapers";
 import "./App.css";
@@ -11,6 +11,9 @@ function SelectField({ label, value, onChange, children }) {
 }
 
 export default function App() {
+  const introVideo = useRef(null);
+  const [showIntro, setShowIntro] = useState(true);
+  const [discordCopied, setDiscordCopied] = useState(false);
   const [page, setPage] = useState("browse");
   const [theme, setTheme] = useState("light");
   const [papers, setPapers] = useState([]);
@@ -76,6 +79,42 @@ export default function App() {
     "Aerospace Engineering",
     "Mechanical Engineering",
   ];
+
+  const enableIntroSound = async () => {
+    if (!introVideo.current) return;
+    if (introVideo.current.ended) introVideo.current.currentTime = 0;
+    introVideo.current.muted = false;
+    await introVideo.current.play().catch(() => {});
+  };
+  const leaveIntro = () => {
+    introVideo.current?.pause();
+    setShowIntro(false);
+  };
+  const copyDiscord = async () => {
+    await navigator.clipboard?.writeText("__eshxxn.");
+    setDiscordCopied(true);
+    window.setTimeout(() => setDiscordCopied(false), 1800);
+  };
+
+  if (showIntro) return <main className="intro-page">
+    <video ref={introVideo} className="intro-video" src="/eshxxn-intro.mp4" autoPlay muted playsInline aria-label="Anime edit background video" />
+    <div className="intro-shade" />
+    <section className="intro-content">
+      <p className="intro-kicker">DSU PAPER HUB</p>
+      <h1>MADE BY <span>ESHXXN</span></h1>
+      <p className="intro-branch">CSE BRANCH</p>
+      <p className="intro-copy">A student-built space to find and share DSU question papers.</p>
+      <div className="intro-actions">
+        <button className="intro-enter" onClick={leaveIntro}>Enter Paper Hub <ArrowRight size={18} /></button>
+        <button className="intro-sound" onClick={enableIntroSound}><Volume2 size={18} /> Play with sound</button>
+      </div>
+      <div className="intro-socials">
+        <a href="https://www.instagram.com/urfavv.eshxxn_/" target="_blank" rel="noreferrer"><Camera size={18} /> Instagram</a>
+        <button onClick={copyDiscord}><MessageCircle size={18} /> {discordCopied ? "Discord copied" : "Discord: __eshxxn."} <Copy size={15} /></button>
+      </div>
+    </section>
+    <p className="intro-duration">30 SECOND INTRO · ORIGINAL AUDIO</p>
+  </main>;
 
   return <div className={`app-shell ${theme === "dark" ? "dark-theme" : ""}`}>
     <header className="site-header"><button className="brand" onClick={() => setPage("browse")}><span className="brand-icon"><BookOpen size={20} /></span>DSU Paper Hub</button><nav><button className="theme-button" onClick={() => setTheme((current) => current === "light" ? "dark" : "light")} aria-label="Change colour theme">{theme === "light" ? <Moon size={18} /> : <Sun size={18} />}</button><button className={page === "browse" ? "nav-link active" : "nav-link"} onClick={() => setPage("browse")}>Browse papers</button><button className="nav-link" onClick={showCycles}>Cycles</button><button className={page === "upload" ? "nav-link active" : "nav-link"} onClick={() => setPage("upload")}>Upload</button></nav></header>
