@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, BookOpen, Camera, Check, Copy, Download, FileUp, FolderUp, MessageCircle, Moon, Search, Sun, Upload, Volume2, VolumeX } from "lucide-react";
+import { ArrowRight, BookOpen, BriefcaseBusiness, Camera, Check, Copy, Download, FileUp, FolderUp, MessageCircle, Moon, Search, Sun, Upload, Volume2, VolumeX } from "lucide-react";
 import { getPapers } from "./lib/getpaper";
 import { supabase } from "./lib/supabase";
 import { uploadPapers } from "./lib/uploadPapers";
@@ -144,6 +144,7 @@ export default function App() {
       </div>
       <div className="intro-socials">
         <a href="https://www.instagram.com/urfavv.eshxxn_/" target="_blank" rel="noreferrer"><Camera size={18} /> ESHXXN Instagram</a>
+        <a href="https://www.linkedin.com/in/eshan-thotad-606876282/" target="_blank" rel="noreferrer"><BriefcaseBusiness size={18} /> LinkedIn</a>
         <button onClick={copyDiscord}><MessageCircle size={18} /> {discordCopied ? "Discord copied" : "Discord: __eshxxn."} <Copy size={15} /></button>
       </div>
     </section>
