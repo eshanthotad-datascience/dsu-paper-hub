@@ -144,7 +144,6 @@ export default function App() {
       </div>
       <div className="intro-socials">
         <a href="https://www.instagram.com/urfavv.eshxxn_/" target="_blank" rel="noreferrer"><Camera size={18} /> ESHXXN Instagram</a>
-        <a href="https://www.instagram.com/adarsh__satwar/" target="_blank" rel="noreferrer"><Camera size={18} /> ADARXXH Instagram</a>
         <button onClick={copyDiscord}><MessageCircle size={18} /> {discordCopied ? "Discord copied" : "Discord: __eshxxn."} <Copy size={15} /></button>
       </div>
     </section>
