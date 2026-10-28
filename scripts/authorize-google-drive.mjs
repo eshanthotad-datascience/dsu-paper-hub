@@ -24,7 +24,7 @@ authorizationUrl.search = new URLSearchParams({
   client_id: credentials.client_id,
   redirect_uri: redirectUri,
   response_type: "code",
-  scope: "https://www.googleapis.com/auth/drive.file",
+  scope: "https://www.googleapis.com/auth/drive",
   access_type: "offline",
   prompt: "consent",
 }).toString();
