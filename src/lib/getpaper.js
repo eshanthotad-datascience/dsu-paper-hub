@@ -1,11 +1,17 @@
 import { supabase } from "./supabase";
 
 export async function getPapers({ search = "", semester = "" } = {}) {
-  const { data, error } = await supabase.functions.invoke("list-papers", { method: "GET" });
-  if (error) throw error;
+  let query = supabase
+    .from("papers")
+    .select("*")
+    .not("drive_url", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(100);
 
-  return (data?.papers || []).filter((paper) =>
-    (!search.trim() || paper.title.toLowerCase().includes(search.trim().toLowerCase()))
-    && (semester === "" || paper.semester === Number(semester)),
-  );
+  if (search.trim()) query = query.ilike("title", `%${search.trim()}%`);
+  if (semester !== "") query = query.eq("semester", Number(semester));
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []).map((paper) => ({ ...paper, file_url: paper.drive_url }));
 }
