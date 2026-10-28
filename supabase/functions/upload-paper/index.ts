@@ -84,7 +84,7 @@ Deno.serve(async (request) => {
     const { error: databaseError } = await adminClient.from("papers").insert(rows);
     if (databaseError) {
       await Promise.all(uploaded.map(({ id }) => fetch(`https://www.googleapis.com/drive/v3/files/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } })));
-      throw new Error("Could not save paper details.");
+      throw new Error(`Could not save paper details: ${databaseError.message}`);
     }
     return response({ success: true, count: rows.length });
   } catch (error) {
