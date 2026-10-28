@@ -1,0 +1,96 @@
+import { useEffect, useMemo, useState } from "react";
+import { BookOpen, Check, Download, FileUp, FolderUp, Moon, Search, Sun, Upload } from "lucide-react";
+import { getPapers } from "./lib/getpaper";
+import { uploadPapers } from "./lib/uploadPapers";
+import "./App.css";
+
+const demoPapers = [
+  { id: "demo-1", title: "Data Structures", subject_code: "CS201", branch: "Computer Science (CSE)", semester: 3, exam_year: 2023, exam_type: "Mid Semester" },
+  { id: "demo-2", title: "Engineering Mathematics III", subject_code: "MA301", branch: "Electronics (ECE)", semester: 3, exam_year: 2024, exam_type: "End Semester" },
+  { id: "demo-3", title: "Software Engineering", subject_code: "CS403", branch: "Computer Science (CSE)", semester: 4, exam_year: 2024, exam_type: "Mid Semester" },
+  { id: "demo-4", title: "Computer Architecture", subject_code: "CS402", branch: "Information Science (ISE)", semester: 4, exam_year: 2024, exam_type: "End Semester" },
+  { id: "demo-5", title: "Database Management Systems", subject_code: "CS404", branch: "Computer Science (CSE)", semester: 4, exam_year: 2025, exam_type: "Mid Semester" },
+  { id: "demo-6", title: "Analysis of Algorithms", subject_code: "CS405", branch: "Computer Science (CSE)", semester: 4, exam_year: 2025, exam_type: "End Semester" },
+];
+const semesters = Array.from({ length: 8 }, (_, index) => index + 1);
+
+function SelectField({ label, value, onChange, children }) {
+  return <label className="field"><span>{label}</span><select value={value} onChange={onChange}>{children}</select></label>;
+}
+
+export default function App() {
+  const [page, setPage] = useState("browse");
+  const [theme, setTheme] = useState("light");
+  const [papers, setPapers] = useState([]);
+  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState({ branch: "", cycle: "", semester: "", year: "", type: "" });
+  const [loaded, setLoaded] = useState(false);
+  const [form, setForm] = useState({ branch: "", cycle: "", semester: "", subject: "", code: "", type: "", year: "" });
+  const [fileName, setFileName] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [uploadStatus, setUploadStatus] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getPapers().then((data) => { if (!cancelled && data?.length) setPapers(data); }).catch(() => {}).finally(() => { if (!cancelled) setLoaded(true); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const displayedPapers = useMemo(() => {
+    const source = papers.length ? papers : demoPapers;
+    const needle = search.trim().toLowerCase();
+    return source.filter((paper) => (!needle || `${paper.title} ${paper.subject_code || ""}`.toLowerCase().includes(needle)) && (!filters.branch || paper.branch === filters.branch) && (!filters.cycle || paper.cycle === filters.cycle) && (!filters.semester || String(paper.semester) === filters.semester) && (!filters.year || String(paper.exam_year) === filters.year) && (!filters.type || paper.exam_type === filters.type));
+  }, [filters, papers, search]);
+  const setFilter = (name) => (event) => setFilters((current) => ({ ...current, [name]: event.target.value }));
+  const setFormField = (name) => (event) => setForm((current) => ({ ...current, [name]: event.target.value }));
+  const selectFiles = (fileList) => {
+    const files = Array.from(fileList || []);
+    setSelectedFiles(files);
+    setFileName(files.length === 1 ? files[0].name : files.length ? `${files.length} files selected` : "");
+    setUploadStatus("");
+  };
+  const submitUpload = async (event) => {
+    event.preventDefault();
+    setIsUploading(true);
+    setUploadStatus("");
+    try {
+      const count = await uploadPapers({ files: selectedFiles, details: form });
+      setUploadStatus(`${count} paper${count === 1 ? "" : "s"} uploaded successfully.`);
+      setSelectedFiles([]);
+      setFileName("");
+    } catch (error) {
+      setUploadStatus(error.message || "Upload failed. Please try again.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+  const resetFilters = () => { setSearch(""); setFilters({ branch: "", cycle: "", semester: "", year: "", type: "" }); };
+  const showCycles = () => {
+    setPage("browse");
+    window.setTimeout(() => document.getElementById("cycles")?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+  };
+  const branches = [
+    "Computer Science & Engineering (CSE)",
+    "CSE - Artificial Intelligence & Machine Learning",
+    "CSE - Data Sciences",
+    "CSE - Cyber Security",
+    "CSE - AI & Data Science",
+    "Computer Science & Technology (CST)",
+    "Computer Science & Medical Engineering",
+    "Artificial Intelligence & Robotics",
+    "Electronics & Communication Engineering (ECE)",
+    "Aerospace Engineering",
+    "Mechanical Engineering",
+  ];
+
+  return <div className={`app-shell ${theme === "dark" ? "dark-theme" : ""}`}>
+    <header className="site-header"><button className="brand" onClick={() => setPage("browse")}><span className="brand-icon"><BookOpen size={20} /></span>DSU Paper Hub</button><nav><button className="theme-button" onClick={() => setTheme((current) => current === "light" ? "dark" : "light")} aria-label="Change colour theme">{theme === "light" ? <Moon size={18} /> : <Sun size={18} />}</button><button className={page === "browse" ? "nav-link active" : "nav-link"} onClick={() => setPage("browse")}>Browse papers</button><button className="nav-link" onClick={showCycles}>Cycles</button><button className={page === "upload" ? "nav-link active" : "nav-link"} onClick={() => setPage("upload")}>Upload</button></nav></header>
+    {page === "browse" ? <main>
+      <section className="browse-hero"><h1>Find the question papers you need</h1><p>Papers shared by Dayananda Sagar University students. Search,<br />preview and download, no login needed.</p><div className="search-box"><Search size={21} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by subject name or code" /><button>Search</button></div></section>
+      <section className="library"><div className="paper-search-title"><div><h2>Search papers</h2><p>Filter by branch, cycle, semester, year, or paper type.</p></div><span>Use the search bar above for subject name or code.</span></div><div className="filter-panel"><SelectField label="Branch" value={filters.branch} onChange={setFilter("branch")}><option value="">All branches</option>{branches.map((branch) => <option key={branch}>{branch}</option>)}</SelectField><SelectField label="Cycle" value={filters.cycle} onChange={setFilter("cycle")}><option value="">All cycles</option><option>Chemistry cycle</option><option>Physics cycle</option></SelectField><SelectField label="Semester" value={filters.semester} onChange={setFilter("semester")}><option value="">All semesters</option>{semesters.map((semester) => <option key={semester} value={semester}>Semester {semester}</option>)}</SelectField><SelectField label="Year" value={filters.year} onChange={setFilter("year")}><option value="">All years</option>{[2026, 2025, 2024, 2023, 2022].map((year) => <option key={year}>{year}</option>)}</SelectField><SelectField label="Paper type" value={filters.type} onChange={setFilter("type")}><option value="">All types</option><option>Mid Semester</option><option>End Semester</option></SelectField><button className="outline-button reset" onClick={resetFilters}>Reset</button></div>
+        <div className="section-heading"><h2>Latest papers</h2><span>{loaded ? `Showing ${displayedPapers.length} papers` : "Loading papers..."}</span></div><div className="paper-grid">{displayedPapers.map((paper) => <article className="paper-card" key={paper.id}><div className="card-top"><span className="code-pill">{paper.subject_code || "DSU"}</span><span>{paper.exam_type}</span></div><h3>{paper.title}</h3><p>{paper.branch}<br />Semester {paper.semester} · {paper.exam_year}</p><div className="card-actions"><a className="outline-button" href={paper.file_url || "#"} target={paper.file_url ? "_blank" : undefined} rel="noreferrer">View</a><a className="primary-button" href={paper.file_url || "#"} target={paper.file_url ? "_blank" : undefined} rel="noreferrer"><Download size={17} />Download</a></div></article>)}</div>{!displayedPapers.length && <p className="empty-state">No papers match those filters.</p>}<section id="cycles" className="cycle-section"><div><h2>Browse by cycle</h2><p>Find question papers for Chemistry and Physics cycles.</p></div><div className="cycle-cards"><button className="cycle-card"><strong>Chemistry cycle</strong><small>Browse Chemistry-cycle papers</small><span>→</span></button><button className="cycle-card"><strong>Physics cycle</strong><small>Browse Physics-cycle papers</small><span>→</span></button></div></section></section>
+    </main> : <main className="upload-page"><section className="upload-heading"><h1>Share a question paper</h1><p>Help your juniors and classmates. Add the details you know and attach a paper.</p></section><section className="upload-layout"><form className="upload-form" onSubmit={submitUpload}><div className="form-grid"><SelectField label="Branch" value={form.branch} onChange={setFormField("branch")}><option value="">Select branch</option>{branches.map((branch) => <option key={branch}>{branch}</option>)}</SelectField><SelectField label="Cycle" value={form.cycle} onChange={setFormField("cycle")}><option value="">Select cycle</option><option>Chemistry cycle</option><option>Physics cycle</option></SelectField><SelectField label="Semester" value={form.semester} onChange={setFormField("semester")}><option value="">Select semester</option>{semesters.map((semester) => <option key={semester}>{semester}</option>)}</SelectField><label className="field"><span>Subject name</span><input value={form.subject} onChange={setFormField("subject")} placeholder="e.g. Data Structures" /></label><label className="field"><span>Subject code <small>(optional)</small></span><input value={form.code} onChange={setFormField("code")} placeholder="e.g. CS201" /></label><SelectField label="Paper type" value={form.type} onChange={setFormField("type")}><option value="">Select type</option><option>Mid Semester</option><option>End Semester</option></SelectField><SelectField label="Exam year" value={form.year} onChange={setFormField("year")}><option value="">Select year</option>{[2026, 2025, 2024, 2023, 2022].map((year) => <option key={year}>{year}</option>)}</SelectField></div><div className="upload-choices"><label className="drop-zone"><input type="file" accept="application/pdf,image/png" onChange={(event) => selectFiles(event.target.files)} /><FileUp size={36} /><strong>{fileName || "Choose a PDF or PNG"}</strong><span>PDF or PNG, up to 10 MB</span><em>Choose file</em></label><label className="folder-zone"><input type="file" webkitdirectory="" directory="" multiple onChange={(event) => selectFiles(event.target.files)} /><FolderUp size={28} /><span>Upload a folder</span><small>Choose a folder with papers</small></label></div>{uploadStatus && <p className="upload-status">{uploadStatus}</p>}<button className="primary-button upload-submit" type="submit" disabled={isUploading}>{isUploading ? "Uploading..." : <><Upload size={18} />Upload paper</>}</button></form><aside className="upload-side"><div className="info-card"><h2>Before you upload</h2>{["Use a clear, readable scan", "Subject code is optional", "PDF, PNG, or one paper folder", "Files are sent directly to DSU Paper Hub storage"].map((item) => <p key={item}><Check size={18} />{item}</p>)}</div><div className="sign-in-card"><h2>Public uploads</h2><p>You can upload without signing in. Please share only genuine question papers.</p></div></aside></section></main>}
+    <footer>Made by DSU students, for DSU students. Not an official university website.</footer>
+  </div>;
+}
