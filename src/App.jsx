@@ -135,7 +135,7 @@ export default function App() {
     <div className="intro-shade" />
     <section className="intro-content">
       <p className="intro-kicker">DSU PAPER HUB</p>
-      <h1>MADE BY <span>ESHXXN</span></h1>
+      <h1>MADE BY <span>ESHXXN <i>&amp;</i> ADARXXH</span></h1>
       <p className="intro-branch">CSE BRANCH</p>
       <p className="intro-copy">A student-built space to find and share DSU question papers. Many features will be added in future updates. Stay tuned.</p>
       <div className="intro-actions">
@@ -143,7 +143,8 @@ export default function App() {
         <button className="intro-sound" onClick={toggleIntroSound}>{soundEnabled ? <VolumeX size={18} /> : <Volume2 size={18} />}{soundEnabled ? "Mute sound" : "Enable sound"}</button>
       </div>
       <div className="intro-socials">
-        <a href="https://www.instagram.com/urfavv.eshxxn_/" target="_blank" rel="noreferrer"><Camera size={18} /> Instagram</a>
+        <a href="https://www.instagram.com/urfavv.eshxxn_/" target="_blank" rel="noreferrer"><Camera size={18} /> ESHXXN Instagram</a>
+        <a href="https://www.instagram.com/adarsh__satwar/" target="_blank" rel="noreferrer"><Camera size={18} /> ADARXXH Instagram</a>
         <button onClick={copyDiscord}><MessageCircle size={18} /> {discordCopied ? "Discord copied" : "Discord: __eshxxn."} <Copy size={15} /></button>
       </div>
     </section>
