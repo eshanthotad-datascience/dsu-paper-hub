@@ -65,7 +65,7 @@ Deno.serve(async (request) => {
     const cycle = String(form.get("cycle") ?? "").trim();
     const subjectCode = String(form.get("subject_code") ?? "").trim();
     const semester = Number(form.get("semester"));
-    const examYear = Number(form.get("exam_year"));
+    const examYear = Number(form.get("exam_year")) || new Date().getFullYear();
     const examType = String(form.get("exam_type") ?? "").trim();
     if (!files.length || !title || !branch || !Number.isInteger(semester) || !Number.isInteger(examYear) || !examType) return response({ error: "Please complete the paper details and choose at least one file." }, 400);
     if (cycle && cycle !== "Chemistry cycle" && cycle !== "Physics cycle") return response({ error: "Invalid cycle." }, 400);
