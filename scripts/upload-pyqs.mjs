@@ -1,7 +1,5 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { createClient } from "@supabase/supabase-js";
 
 const envFile = path.join(process.cwd(), ".env");
 const envVars = fs.existsSync(envFile)
@@ -18,10 +16,6 @@ const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const dirFlagIndex = args.indexOf("--dir");
 const sourceDir = dirFlagIndex !== -1 ? args[dirFlagIndex + 1] : "C:\\Users\\ESHAN\\New folder (2)\\papers";
-
-function safeName(name) {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
 
 function parseSessionYear(folderName) {
   const match = folderName.match(/^(\d{2})/);
@@ -64,6 +58,42 @@ function collectPdfs(rootDir) {
   return results;
 }
 
+async function fetchExistingPapers() {
+  const res = await fetch(`${supabaseUrl}/rest/v1/papers?select=file_name`, {
+    headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+  });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+async function uploadOne(paper) {
+  const buffer = fs.readFileSync(paper.fullPath);
+  const form = new FormData();
+  form.append("files", new Blob([buffer], { type: "application/pdf" }), paper.fileName);
+  form.append("title", paper.title);
+  form.append("subject_code", paper.subjectCode);
+  form.append("branch", "All branches");
+  form.append("cycle", "");
+  form.append("semester", "1");
+  form.append("exam_year", String(paper.examYear));
+  form.append("exam_type", "End Semester");
+
+  const res = await fetch(`${supabaseUrl}/functions/v1/upload-paper`, {
+    method: "POST",
+    headers: {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+    },
+    body: form,
+  });
+
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.success) {
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return body;
+}
+
 async function main() {
   if (!supabaseUrl || !supabaseKey) {
     throw new Error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in .env");
@@ -78,62 +108,29 @@ async function main() {
     return;
   }
 
-  const supabase = createClient(supabaseUrl, supabaseKey);
-  const { data: existing, error: fetchError } = await supabase.from("papers").select("file_name");
-  if (fetchError) throw new Error(fetchError.message);
-  const existingNames = new Set((existing || []).map((e) => e.file_name));
+  const existing = await fetchExistingPapers();
+  const existingNames = new Set(existing.map((e) => e.file_name));
 
-  const batchId = crypto.randomUUID();
   let uploaded = 0;
   let skipped = 0;
-
   for (const paper of pdfs) {
     if (existingNames.has(paper.fileName)) {
-      console.log(`SKIP (already in DB): ${paper.fileName}`);
+      console.log(`SKIP (already uploaded): ${paper.fileName}`);
       skipped++;
       continue;
     }
-
-    const buffer = fs.readFileSync(paper.fullPath);
-    const objectPath = `pyqs/${paper.examYear}/${crypto.randomUUID().slice(0, 8)}-${safeName(paper.fileName)}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("papers")
-      .upload(objectPath, buffer, { contentType: "application/pdf", upsert: false });
-
-    if (uploadError) {
-      console.error(`STORAGE ERROR on ${paper.fileName}: ${uploadError.message}`);
-      console.error("Make sure you ran supabase/migrations/20261111_supabase_storage.sql in Supabase Dashboard -> SQL Editor.");
-      process.exit(1);
+    try {
+      await uploadOne(paper);
+      uploaded++;
+      console.log(`[${uploaded}/${pdfs.length}] Uploaded: ${paper.subjectCode} - ${paper.title}`);
+    } catch (err) {
+      console.error(`FAILED on ${paper.fileName}: ${err.message}`);
+      if (err.message.includes("Google authorization")) {
+        console.error("\nUpdate GOOGLE_REFRESH_TOKEN in Supabase Dashboard -> Edge Functions -> Secrets from .secrets/google-drive.env, then re-run: node scripts/upload-pyqs.mjs");
+        process.exit(1);
+      }
     }
-
-    const { data: urlData } = supabase.storage.from("papers").getPublicUrl(objectPath);
-    const { error: insertError } = await supabase.from("papers").insert({
-      title: paper.title,
-      subject_code: paper.subjectCode || null,
-      branch: "All branches",
-      cycle: null,
-      semester: 1,
-      exam_year: paper.examYear,
-      exam_type: "End Semester",
-      drive_file_id: objectPath,
-      drive_url: urlData.publicUrl,
-      file_name: paper.fileName,
-      file_type: "application/pdf",
-      file_size: buffer.length,
-      upload_batch_id: batchId,
-    });
-
-    if (insertError) {
-      console.error(`DB INSERT ERROR on ${paper.fileName}: ${insertError.message}`);
-      console.error("Make sure you ran supabase/migrations/20261111_supabase_storage.sql in Supabase Dashboard -> SQL Editor.");
-      process.exit(1);
-    }
-
-    uploaded++;
-    console.log(`[${uploaded}/${pdfs.length}] Uploaded: ${paper.subjectCode} - ${paper.title}`);
   }
-
   console.log(`Done. Uploaded: ${uploaded}, Skipped: ${skipped}`);
 }
 
