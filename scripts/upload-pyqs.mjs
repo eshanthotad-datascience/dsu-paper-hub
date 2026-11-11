@@ -1,21 +1,31 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-const envFile = path.join(process.cwd(), ".env");
-const envVars = fs.existsSync(envFile)
-  ? Object.fromEntries(fs.readFileSync(envFile, "utf8").trim().split(/\r?\n/).filter(Boolean).map((l) => {
-    const i = l.indexOf("=");
-    return [l.slice(0, i), l.slice(i + 1)];
-  }))
-  : {};
+function loadEnv(filePath) {
+  if (!fs.existsSync(filePath)) return {};
+  return Object.fromEntries(
+    fs.readFileSync(filePath, "utf8")
+      .trim()
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => {
+        const i = line.indexOf("=");
+        return [line.slice(0, i), line.slice(i + 1)];
+      }),
+  );
+}
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || envVars.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || envVars.VITE_SUPABASE_ANON_KEY;
+const driveEnv = loadEnv(path.join(process.cwd(), ".secrets", "google-drive.env"));
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const dirFlagIndex = args.indexOf("--dir");
 const sourceDir = dirFlagIndex !== -1 ? args[dirFlagIndex + 1] : "C:\\Users\\ESHAN\\New folder (2)\\papers";
+
+function safeName(name) {
+  return name.replace(/[^a-zA-Z0-9._ -]/g, "_");
+}
 
 function parseSessionYear(folderName) {
   const match = folderName.match(/^(\d{2})/);
@@ -48,56 +58,105 @@ function collectPdfs(rootDir) {
       results.push({
         fullPath,
         fileName: file.name,
+        safeFileName: safeName(file.name),
         folder: entry.name,
         examYear,
         subjectCode,
         title,
+        size: fs.statSync(fullPath).size,
       });
     }
   }
-  return results;
+  return results.sort((a, b) => b.examYear - a.examYear || a.title.localeCompare(b.title));
 }
 
-async function fetchExistingPapers() {
-  const res = await fetch(`${supabaseUrl}/rest/v1/papers?select=file_name`, {
-    headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+async function getGoogleAccessToken() {
+  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN } = driveEnv;
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REFRESH_TOKEN) {
+    throw new Error("Missing Google Drive credentials in .secrets/google-drive.env");
+  }
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      refresh_token: GOOGLE_REFRESH_TOKEN,
+      grant_type: "refresh_token",
+    }),
   });
-  if (!res.ok) return [];
-  return res.json();
+  const data = await res.json();
+  if (!res.ok || !data.access_token) {
+    throw new Error(`Google token refresh failed: ${data.error_description || data.error || res.status}`);
+  }
+  return data.access_token;
 }
 
-async function uploadOne(paper) {
-  const buffer = fs.readFileSync(paper.fullPath);
-  const form = new FormData();
-  form.append("files", new Blob([buffer], { type: "application/pdf" }), paper.fileName);
-  form.append("title", paper.title);
-  form.append("subject_code", paper.subjectCode);
-  form.append("branch", "All branches");
-  form.append("cycle", "");
-  form.append("semester", "1");
-  form.append("exam_year", String(paper.examYear));
-  form.append("exam_type", "End Semester");
+async function listDriveFiles(token, folderId) {
+  const existing = new Map();
+  let pageToken = "";
+  do {
+    const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
+    const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,name)&pageSize=100${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(`Drive list failed: ${JSON.stringify(data)}`);
+    for (const file of data.files || []) {
+      existing.set(file.name, file.id);
+    }
+    pageToken = data.nextPageToken || "";
+  } while (pageToken);
+  return existing;
+}
 
-  const res = await fetch(`${supabaseUrl}/functions/v1/upload-paper`, {
+async function setPublicReader(fileId, token) {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "anyone", role: "reader" }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Permission failed for ${fileId}: ${text}`);
+  }
+}
+
+async function uploadToDrive(paper, token, folderId) {
+  const boundary = `dsu-paper-${crypto.randomUUID()}`;
+  const metadata = { name: paper.safeFileName, mimeType: "application/pdf", parents: [folderId] };
+  const fileBuffer = fs.readFileSync(paper.fullPath);
+  const body = new Blob([
+    `--${boundary}\r\n`,
+    "Content-Type: application/json; charset=UTF-8\r\n\r\n",
+    JSON.stringify(metadata),
+    `\r\n--${boundary}\r\n`,
+    "Content-Type: application/pdf\r\n\r\n",
+    fileBuffer,
+    `\r\n--${boundary}--`,
+  ]);
+
+  const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name", {
     method: "POST",
     headers: {
-      apikey: supabaseKey,
-      Authorization: `Bearer ${supabaseKey}`,
+      Authorization: `Bearer ${token}`,
+      "Content-Type": `multipart/related; boundary=${boundary}`,
     },
-    body: form,
+    body,
   });
-
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok || !body.success) {
-    throw new Error(body.error || `HTTP ${res.status}`);
+  const driveFile = await res.json();
+  if (!res.ok || !driveFile.id) {
+    throw new Error(`Drive upload failed for ${paper.fileName}: ${JSON.stringify(driveFile)}`);
   }
-  return body;
+  await setPublicReader(driveFile.id, token);
+  return driveFile.id;
+}
+
+function sqlQuote(val) {
+  if (val === null || val === undefined) return "null";
+  return `'${String(val).replace(/'/g, "''")}'`;
 }
 
 async function main() {
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in .env");
-  }
   const pdfs = collectPdfs(sourceDir);
   console.log(`Found ${pdfs.length} PDFs in ${sourceDir}`);
 
@@ -108,30 +167,62 @@ async function main() {
     return;
   }
 
-  const existing = await fetchExistingPapers();
-  const existingNames = new Set(existing.map((e) => e.file_name));
+  const folderId = driveEnv.GOOGLE_DRIVE_FOLDER_ID;
+  if (!folderId) throw new Error("Missing GOOGLE_DRIVE_FOLDER_ID in .secrets/google-drive.env");
 
-  let uploaded = 0;
-  let skipped = 0;
-  for (const paper of pdfs) {
-    if (existingNames.has(paper.fileName)) {
-      console.log(`SKIP (already uploaded): ${paper.fileName}`);
-      skipped++;
-      continue;
+  const token = await getGoogleAccessToken();
+  const existingFiles = await listDriveFiles(token, folderId);
+  console.log(`Existing files in Google Drive folder: ${existingFiles.size}`);
+
+  const batchId = crypto.randomUUID();
+  const catalog = [];
+  let uploadedCount = 0;
+  let reusedCount = 0;
+
+  for (let i = 0; i < pdfs.length; i++) {
+    const paper = pdfs[i];
+    let fileId = existingFiles.get(paper.safeFileName) || existingFiles.get(paper.fileName);
+    if (fileId) {
+      reusedCount++;
+      console.log(`[${i + 1}/${pdfs.length}] Reusing existing Drive file: ${paper.safeFileName}`);
+    } else {
+      fileId = await uploadToDrive(paper, token, folderId);
+      uploadedCount++;
+      console.log(`[${i + 1}/${pdfs.length}] Uploaded to Drive: ${paper.subjectCode} - ${paper.title} (${fileId})`);
     }
-    try {
-      await uploadOne(paper);
-      uploaded++;
-      console.log(`[${uploaded}/${pdfs.length}] Uploaded: ${paper.subjectCode} - ${paper.title}`);
-    } catch (err) {
-      console.error(`FAILED on ${paper.fileName}: ${err.message}`);
-      if (err.message.includes("Google authorization")) {
-        console.error("\nUpdate GOOGLE_REFRESH_TOKEN in Supabase Dashboard -> Edge Functions -> Secrets from .secrets/google-drive.env, then re-run: node scripts/upload-pyqs.mjs");
-        process.exit(1);
-      }
-    }
+
+    const driveUrl = `https://drive.google.com/file/d/${fileId}/view`;
+    catalog.push({
+      id: `pyq-${fileId}`,
+      title: paper.title,
+      subject_code: paper.subjectCode || null,
+      branch: "All branches",
+      cycle: null,
+      semester: 1,
+      exam_year: paper.examYear,
+      exam_type: "End Semester",
+      drive_file_id: fileId,
+      drive_url: driveUrl,
+      file_url: driveUrl,
+      file_name: paper.fileName,
+      file_type: "application/pdf",
+      file_size: paper.size,
+      upload_batch_id: batchId,
+    });
   }
-  console.log(`Done. Uploaded: ${uploaded}, Skipped: ${skipped}`);
+
+  const outJsonPath = path.join(process.cwd(), "src", "data", "papers.json");
+  fs.mkdirSync(path.dirname(outJsonPath), { recursive: true });
+  fs.writeFileSync(outJsonPath, JSON.stringify(catalog, null, 2) + "\n");
+
+  const sqlRows = catalog.map((r) =>
+    `(${sqlQuote(r.title)}, ${sqlQuote(r.subject_code)}, ${sqlQuote(r.branch)}, null, ${r.semester}, ${r.exam_year}, ${sqlQuote(r.exam_type)}, ${sqlQuote(r.drive_file_id)}, ${sqlQuote(r.drive_url)}, ${sqlQuote(r.file_name)}, ${sqlQuote(r.file_type)}, ${r.file_size}, ${sqlQuote(r.upload_batch_id)})`,
+  );
+  const seedSql = `-- Auto-generated seed for all ${catalog.length} PYQs uploaded to Google Drive\n` +
+    `insert into public.papers (title, subject_code, branch, cycle, semester, exam_year, exam_type, drive_file_id, drive_url, file_name, file_type, file_size, upload_batch_id)\nvalues\n${sqlRows.join(",\n")};\n`;
+  fs.writeFileSync(path.join(process.cwd(), "supabase", "seed_papers.sql"), seedSql);
+
+  console.log(`Done! Uploaded: ${uploadedCount}, Reused: ${reusedCount}, Total in catalog: ${catalog.length}`);
 }
 
 main().catch((err) => {
