@@ -4,19 +4,28 @@ import path from "node:path";
 import { exec } from "node:child_process";
 
 const args = process.argv.slice(2);
-const valueFor = (flag) => args[args.indexOf(flag) + 1];
+const valueFor = (flag) => {
+  const index = args.indexOf(flag);
+  return index !== -1 ? args[index + 1] : undefined;
+};
+const envPath = path.join(process.cwd(), ".secrets", "google-drive.env");
+const existingEnv = fs.existsSync(envPath)
+  ? Object.fromEntries(fs.readFileSync(envPath, "utf8").trim().split(/\r?\n/).filter(Boolean).map((line) => {
+    const splitAt = line.indexOf("=");
+    return [line.slice(0, splitAt), line.slice(splitAt + 1)];
+  }))
+  : {};
 const credentialPath = valueFor("--credentials");
-const folderId = valueFor("--folder");
+const folderId = valueFor("--folder") || existingEnv.GOOGLE_DRIVE_FOLDER_ID;
 const redirectUri = "http://localhost:53682/callback";
 
-if (!credentialPath || !folderId) {
+const credentials = credentialPath
+  ? JSON.parse(fs.readFileSync(credentialPath, "utf8")).web
+  : { client_id: existingEnv.GOOGLE_CLIENT_ID, client_secret: existingEnv.GOOGLE_CLIENT_SECRET };
+
+if (!credentials?.client_id || !credentials?.client_secret || !folderId) {
   console.error("Usage: node scripts/authorize-google-drive.mjs --credentials <path-to-client-secret.json> --folder <google-drive-folder-id>");
   process.exit(1);
-}
-
-const credentials = JSON.parse(fs.readFileSync(credentialPath, "utf8")).web;
-if (!credentials?.client_id || !credentials?.client_secret) {
-  throw new Error("This must be a Google OAuth Web application credential JSON file.");
 }
 
 const authorizationUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
