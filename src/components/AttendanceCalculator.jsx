@@ -696,9 +696,9 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
             <form onSubmit={handleSyncErp} className="att-profile-form">
               <div className="att-form-row">
                 <label className="field">
-                  <span>Student USN / SRN *</span>
+                  <span>Student USN / SRN * (Username)</span>
                   <input
-                    placeholder="Enter your USN (e.g. 26UGENG2182)"
+                    placeholder="Enter your USN / Username (e.g. 26UGENG2182)"
                     value={profileInput.usn}
                     onChange={(e) => setProfileInput({ ...profileInput, usn: e.target.value })}
                     required

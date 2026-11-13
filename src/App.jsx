@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, BookOpen, BriefcaseBusiness, Camera, Check, Copy, Download, FileUp, FolderUp, MessageCircle, Moon, Search, Sun, Upload, Volume2, VolumeX } from "lucide-react";
+import { ArrowRight, BookOpen, BriefcaseBusiness, Calculator, Camera, Check, Copy, Download, FileUp, FolderUp, MessageCircle, Moon, Search, Sun, Upload, Volume2, VolumeX } from "lucide-react";
 import { getPapers } from "./lib/getpaper";
 import { supabase } from "./lib/supabase";
 import { uploadPapers } from "./lib/uploadPapers";
@@ -173,6 +173,11 @@ export default function App() {
     introVideo.current?.pause();
     setShowIntro(false);
   };
+  const goToAttendance = () => {
+    introVideo.current?.pause();
+    setPage("attendance");
+    setShowIntro(false);
+  };
   const copyDiscord = async () => {
     await navigator.clipboard?.writeText("__eshxxn.");
     setDiscordCopied(true);
@@ -189,6 +194,7 @@ export default function App() {
       <p className="intro-copy">A student-built space to find and share DSU question papers. Many features will be added in future updates. Stay tuned.</p>
       <div className="intro-actions">
         <button className="intro-enter" onClick={leaveIntro}>Enter Paper Hub <ArrowRight size={18} /></button>
+        <button className="intro-attendance" onClick={goToAttendance}><Calculator size={18} /> Attendance Calculator</button>
         <button className="intro-sound" onClick={toggleIntroSound}>{soundEnabled ? <VolumeX size={18} /> : <Volume2 size={18} />}{soundEnabled ? "Mute sound" : "Enable sound"}</button>
       </div>
       <div className="intro-socials">
