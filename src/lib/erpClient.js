@@ -107,38 +107,48 @@ export async function fetchAttendance(credentials, options = {}) {
         academicYear: '2026-2027',
         lastWorkingDay: '2026-12-19',
         semesterEndDate: '2026-12-24',
-        totalWeeklyClasses: 11,
-        approxRemainingClasses: 56,
+        totalWeeklyClasses: 18,
+        approxRemainingClasses: 92,
         weeklyHoursByCourse: {
-          '26EN1105': 2,
+          '26EN1101': 3,
+          '26EN1102': 3,
+          '26EN1105': 3,
+          '26EN1107': 3,
+          '26EN1110': 3,
           '26EN1111': 2,
-          '26EN1110': 1,
-          '26EN1107': 2,
-          '26EN1102': 2,
-          '26EN1101': 1,
           '26EN1112': 1
         },
         scheduleByDay: {
           Monday: [
-            { code: '26EN1107', title: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRO TO C', time: '09:30 AM to 10:30 AM', slotType: 'Theory' },
-            { code: '26EN1111', title: 'ENVIRONMENTAL SCIENCE', time: '11:50 AM to 12:40 PM', slotType: 'Theory' },
-            { code: '26EN1102', title: 'ENGINEERING CHEMISTRY FOR CS CLUSTER', time: '02:45 PM to 03:35 PM', slotType: 'Practical' }
+            { code: '26EN1101', title: 'LINEAR ALGEBRA AND DATA FOUNDATIONS', time: '08:30 AM to 09:30 AM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Dr. ANUP KUMAR BEHERA' },
+            { code: 'LIBRARY-HR', title: 'LIBRARY-HR', time: '09:30 AM to 10:30 AM', slotType: 'Activity', location: '', faculty: '' },
+            { code: '26EN1102', title: 'ENGINEERING CHEMISTRY FOR CS CLUSTER', time: '11:00 AM to 11:50 AM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Dr. NINGARAJU.C' },
+            { code: '26EN1110', title: 'DESIGN STUDIO I: ENGINEERING PROBLEM SOLVING', time: '11:50 AM to 12:40 PM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Dr. SATHYAMOORTHY B' },
+            { code: 'OFFICE-HR', title: 'OFFICE-HR', time: '12:40 PM to 01:30 PM', slotType: 'Activity', location: '', faculty: '' },
+            { code: '26EN1110', title: 'DESIGN STUDIO I: ENGINEERING PROBLEM SOLVING', time: '03:35 PM to 04:25 PM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Dr. SATHYAMOORTHY B' }
           ],
           Tuesday: [
-            { code: '26EN1101', title: 'LINEAR ALGEBRA AND DATA FOUNDATIONS', time: '11:50 AM to 12:40 PM', slotType: 'Theory' },
-            { code: '26EN1107', title: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRO TO C', time: '12:40 PM to 01:30 PM', slotType: 'Theory' }
+            { code: '26EN1105', title: 'ENGINEERING GRAPHICS & GENERATIVE DESIGN FOR CS CLUSTER', time: '08:30 AM to 10:30 AM', slotType: 'Practical', location: 'Laboratory - A405', faculty: 'Mr. KARTHIK S B' },
+            { code: '26EN1107', title: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRODUCTION TO C', time: '11:00 AM to 11:50 AM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Mr. MAHENDRA' },
+            { code: '26EN1101', title: 'LINEAR ALGEBRA AND DATA FOUNDATIONS', time: '12:40 PM to 01:30 PM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Dr. ANUP KUMAR BEHERA' },
+            { code: 'MENTOR-HR', title: 'MENTOR-HR', time: '02:45 PM to 03:35 PM', slotType: 'Activity', location: '', faculty: '' }
           ],
           Wednesday: [
-            { code: '26EN1105', title: 'ENGINEERING GRAPHICS & GENERATIVE DESIGN', time: '08:30 AM to 09:30 AM', slotType: 'Theory' },
-            { code: '26EN1102', title: 'ENGINEERING CHEMISTRY FOR CS CLUSTER', time: '09:30 AM to 10:30 AM', slotType: 'Theory' },
-            { code: '26EN1105', title: 'ENGINEERING GRAPHICS & GENERATIVE DESIGN', time: '11:50 AM to 12:40 PM', slotType: 'Theory' },
-            { code: '26EN1112', title: 'INDIAN CONSTITUTION & LAW', time: '12:40 PM to 01:30 PM', slotType: 'Theory' }
+            { code: '26EN1105', title: 'ENGINEERING GRAPHICS & GENERATIVE DESIGN FOR CS CLUSTER', time: '08:30 AM to 09:30 AM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Mr. KARTHIK S B' },
+            { code: '26EN1107', title: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRODUCTION TO C', time: '09:30 AM to 10:30 AM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Mr. MAHENDRA' },
+            { code: '26EN1111', title: 'ENVIRONMENTAL SCIENCE', time: '11:50 AM to 12:40 PM', slotType: 'Theory', location: 'Seminar Hall - A103', faculty: 'Mr. IZAAZ F' },
+            { code: '26EN1102', title: 'ENGINEERING CHEMISTRY FOR CS CLUSTER', time: '02:45 PM to 04:25 PM', slotType: 'Practical', location: 'Laboratory - A118', faculty: 'Dr. NINGARAJU.C' }
           ],
           Thursday: [
-            { code: '26EN1111', title: 'ENVIRONMENTAL SCIENCE', time: '08:30 AM to 09:30 AM', slotType: 'Theory' }
+            { code: '26EN1111', title: 'ENVIRONMENTAL SCIENCE', time: '08:30 AM to 09:30 AM', slotType: 'Theory', location: 'Seminar Hall - A103', faculty: 'Mr. IZAAZ F' },
+            { code: '26EN1101', title: 'LINEAR ALGEBRA AND DATA FOUNDATIONS', time: '11:50 AM to 12:40 PM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Dr. ANUP KUMAR BEHERA' },
+            { code: '26EN1107', title: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRODUCTION TO C', time: '12:40 PM to 01:30 PM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Mr. MAHENDRA' }
           ],
           Friday: [
-            { code: '26EN1110', title: 'DESIGN STUDIO I: ENGINEERING PROBLEM SOLVING', time: '08:30 AM to 09:30 AM', slotType: 'Theory' }
+            { code: '26EN1110', title: 'DESIGN STUDIO I: ENGINEERING PROBLEM SOLVING', time: '08:30 AM to 09:30 AM', slotType: 'Theory', location: 'Classroom - A343', faculty: 'Dr. SATHYAMOORTHY B' },
+            { code: '26EN1102', title: 'ENGINEERING CHEMISTRY FOR CS CLUSTER', time: '09:30 AM to 10:30 AM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Dr. NINGARAJU.C' },
+            { code: '26EN1105', title: 'ENGINEERING GRAPHICS & GENERATIVE DESIGN FOR CS CLUSTER', time: '11:50 AM to 12:40 PM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Mr. KARTHIK S B' },
+            { code: '26EN1112', title: 'INDIAN CONSTITUTION & LAW', time: '12:40 PM to 01:30 PM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Ms. GOWTHAMI B N' }
           ],
           Saturday: []
         }

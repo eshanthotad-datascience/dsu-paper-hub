@@ -296,6 +296,23 @@ export async function fetchAttendanceHtml(cookieHeader, options = {}) {
   return await attRes.text();
 }
 
+export function safeExtractAspToken(html, name) {
+  if (!html || typeof html !== 'string') return '';
+  const marker = `name="${name}" id="${name}" value="`;
+  let idx = html.indexOf(marker);
+  if (idx === -1) {
+    const marker2 = `id="${name}" value="`;
+    idx = html.indexOf(marker2);
+    if (idx === -1) return '';
+    const start = idx + marker2.length;
+    const end = html.indexOf('"', start);
+    return html.substring(start, end);
+  }
+  const start = idx + marker.length;
+  const end = html.indexOf('"', start);
+  return html.substring(start, end);
+}
+
 /**
  * Step 4: Fetch student timetable HTML from DSU ERP portal.
  */
@@ -319,11 +336,57 @@ export async function fetchTimeTableHtml(cookieHeader, options = {}) {
     throw new Error(`Timetable fetch failed with status ${ttRes.status}`);
   }
 
-  return await ttRes.text();
+  const initialHtml = await ttRes.text();
+
+  // If the initial timetable week has full holiday rows spanning the schedule (e.g. Deepavali),
+  // post back for a regular instructional week (18-11-2026) to retrieve the complete weekly schedule.
+  if (initialHtml.includes('Holiday') || initialHtml.includes('rowspan="9"')) {
+    try {
+      const vs = safeExtractAspToken(initialHtml, '__VIEWSTATE');
+      const vsg = safeExtractAspToken(initialHtml, '__VIEWSTATEGENERATOR') || 'C2EE9ABB';
+      const ev = safeExtractAspToken(initialHtml, '__EVENTVALIDATION');
+
+      if (vs && ev) {
+        const params = new URLSearchParams();
+        params.set('__EVENTTARGET', 'ctl00$cphPageContent$dtpTimeTableAsOn');
+        params.set('__EVENTARGUMENT', '');
+        params.set('__LASTFOCUS', '');
+        params.set('__VIEWSTATE', vs);
+        params.set('__VIEWSTATEGENERATOR', vsg);
+        params.set('__VIEWSTATEENCRYPTED', '');
+        params.set('__EVENTVALIDATION', ev);
+        params.set('ctl00$cphPageContent$dtpTimeTableAsOn', '18-11-2026');
+
+        const postRes = await fetch(ttUrl, {
+          method: 'POST',
+          headers: {
+            ...COMMON_HEADERS,
+            'Cookie': cookieHeader,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Referer': ttUrl,
+          },
+          body: params.toString(),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+
+        if (postRes.ok) {
+          const postHtml = await postRes.text();
+          if (postHtml.includes('id="sample_1"')) {
+            return postHtml;
+          }
+        }
+      }
+    } catch {
+      // Fallback to initialHtml if post fails
+    }
+  }
+
+  return initialHtml;
 }
 
 /**
  * Parse weekly class schedule and remaining class hours from #sample_1 timetable.
+ * Uses a 2D grid matrix parser that accurately accounts for table rowspans and colspans.
  */
 export function parseTimeTableHtml(html) {
   if (!html || typeof html !== 'string') return null;
@@ -333,48 +396,136 @@ export function parseTimeTableHtml(html) {
   const tEnd = html.indexOf('</table>', tIdx);
   const tableHtml = html.substring(tIdx, tEnd + 8);
 
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  // Extract all <tr> rows
   const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
   let rMatch;
   const rows = [];
   while ((rMatch = rowRegex.exec(tableHtml)) !== null) {
-    const rowContent = rMatch[1];
-    const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
-    let cMatch;
-    const cells = [];
-    while ((cMatch = cellRegex.exec(rowContent)) !== null) {
-      cells.push(cMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
-    }
-    rows.push(cells);
+    rows.push(rMatch[1]);
   }
 
   if (rows.length < 2) return null;
 
-  const days = rows[0].slice(1);
-  const scheduleByDay = { Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [] };
+  const numDataRows = rows.length - 1;
+  const grid = [];
+  for (let r = 0; r < numDataRows; r++) {
+    grid[r] = new Array(7).fill(null);
+  }
+
+  for (let r = 0; r < numDataRows; r++) {
+    const rowHtml = rows[r + 1];
+    const cellRegex = /<t[dh]([^>]*)>([\s\S]*?)<\/t[dh]>/gi;
+    let cMatch;
+    let currentGridCol = 0;
+
+    while ((cMatch = cellRegex.exec(rowHtml)) !== null) {
+      while (currentGridCol < 7 && grid[r][currentGridCol] !== null) {
+        currentGridCol++;
+      }
+      if (currentGridCol >= 7) break;
+
+      const attrs = cMatch[1];
+      const rawText = cMatch[2]
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/[ \t]+/g, ' ')
+        .trim();
+
+      const rowspanMatch = attrs.match(/rowspan=["']?(\d+)["']?/i);
+      const rowspan = rowspanMatch ? parseInt(rowspanMatch[1], 10) : 1;
+
+      const colspanMatch = attrs.match(/colspan=["']?(\d+)["']?/i);
+      const colspan = colspanMatch ? parseInt(colspanMatch[1], 10) : 1;
+
+      for (let rs = 0; rs < rowspan; rs++) {
+        for (let cs = 0; cs < colspan; cs++) {
+          if (r + rs < numDataRows && currentGridCol + cs < 7) {
+            grid[r + rs][currentGridCol + cs] = rawText;
+          }
+        }
+      }
+
+      currentGridCol += colspan;
+    }
+  }
+
+  const scheduleByDay = {
+    Monday: [],
+    Tuesday: [],
+    Wednesday: [],
+    Thursday: [],
+    Friday: [],
+    Saturday: [],
+  };
+
   const weeklyHoursByCourse = {};
   let totalWeeklyClasses = 0;
 
-  for (let r = 1; r < rows.length; r++) {
-    const timeSlot = rows[r][0];
-    for (let c = 1; c < rows[r].length; c++) {
-      const cellText = rows[r][c];
-      if (!cellText || cellText.includes('Break') || cellText.includes('Holiday')) continue;
+  for (let r = 0; r < numDataRows; r++) {
+    let rawTime = grid[r][0] || '';
+    let timeSlot = rawTime.replace(/\s+/g, ' ').trim();
+    const tm = timeSlot.match(/(\d{2}:\d{2}\s*(?:AM|PM))\s*(?:to\s*)*(\d{2}:\d{2}\s*(?:AM|PM))/i);
+    if (tm) {
+      timeSlot = `${tm[1]} to ${tm[2]}`;
+    }
 
-      const dayName = days[c - 1]?.split(' ')[0] || `Day_${c}`;
-      const codeMatch = cellText.match(/26EN\d{4}|[A-Z0-9]{5,10}/i);
+    for (let c = 1; c <= 6; c++) {
+      const dayName = days[c - 1];
+      const cell = grid[r][c];
+
+      // Avoid counting the same rowspan slot multiple times
+      if (r > 0 && grid[r - 1][c] === cell) {
+        continue;
+      }
+
+      if (!cell || cell === 'Short Break' || cell === 'Lunch Break' || cell.startsWith('Holiday')) {
+        continue;
+      }
+
+      if (cell === 'LIBRARY-HR' || cell === 'OFFICE-HR' || cell === 'MENTOR-HR') {
+        scheduleByDay[dayName].push({
+          code: cell,
+          title: cell,
+          time: timeSlot,
+          slotType: 'Activity',
+        });
+        continue;
+      }
+
+      const codeMatch = cell.match(/26EN\d{4}|[A-Z0-9]{5,10}/i);
       const code = codeMatch ? codeMatch[0].toUpperCase() : 'OTHER';
 
-      const isLab = cellText.toLowerCase().includes('laboratory') || cellText.toLowerCase().includes('lab');
+      const isLab = cell.toLowerCase().includes('laboratory') || cell.toLowerCase().includes('lab');
       const slotType = isLab ? 'Practical' : 'Theory';
-      const title = cellText.split('{')[0].trim();
+
+      const lines = cell.split('\n').map((l) => l.trim()).filter(Boolean);
+      let title = lines[0] || cell;
+      if (title.startsWith(code)) {
+        title = title.substring(code.length).replace(/^[\s-]+/, '').trim();
+      }
+
+      let location = '';
+      const locMatch = cell.match(/\[(.*?)\]/);
+      if (locMatch) location = locMatch[1];
+
+      let faculty = '';
+      const facMatch = cell.match(/\{(.*?)\}/);
+      if (facMatch) faculty = facMatch[1];
 
       if (!weeklyHoursByCourse[code]) weeklyHoursByCourse[code] = 0;
       weeklyHoursByCourse[code]++;
       totalWeeklyClasses++;
 
-      if (scheduleByDay[dayName]) {
-        scheduleByDay[dayName].push({ code, title, time: timeSlot, slotType });
-      }
+      scheduleByDay[dayName].push({
+        code,
+        title,
+        time: timeSlot,
+        slotType,
+        location,
+        faculty,
+      });
     }
   }
 
@@ -697,38 +848,48 @@ export default async function handler(req, res) {
             academicYear: '2026-2027',
             lastWorkingDay: '2026-12-19',
             semesterEndDate: '2026-12-24',
-            totalWeeklyClasses: 11,
-            approxRemainingClasses: 56,
+            totalWeeklyClasses: 18,
+            approxRemainingClasses: 92,
             weeklyHoursByCourse: {
-              '26EN1105': 2,
+              '26EN1101': 3,
+              '26EN1102': 3,
+              '26EN1105': 3,
+              '26EN1107': 3,
+              '26EN1110': 3,
               '26EN1111': 2,
-              '26EN1110': 1,
-              '26EN1107': 2,
-              '26EN1102': 2,
-              '26EN1101': 1,
               '26EN1112': 1
             },
             scheduleByDay: {
               Monday: [
-                { code: '26EN1107', title: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRO TO C', time: '09:30 AM to 10:30 AM', slotType: 'Theory' },
-                { code: '26EN1111', title: 'ENVIRONMENTAL SCIENCE', time: '11:50 AM to 12:40 PM', slotType: 'Theory' },
-                { code: '26EN1102', title: 'ENGINEERING CHEMISTRY FOR CS CLUSTER', time: '02:45 PM to 03:35 PM', slotType: 'Practical' }
+                { code: '26EN1101', title: 'LINEAR ALGEBRA AND DATA FOUNDATIONS', time: '08:30 AM to 09:30 AM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Dr. ANUP KUMAR BEHERA' },
+                { code: 'LIBRARY-HR', title: 'LIBRARY-HR', time: '09:30 AM to 10:30 AM', slotType: 'Activity', location: '', faculty: '' },
+                { code: '26EN1102', title: 'ENGINEERING CHEMISTRY FOR CS CLUSTER', time: '11:00 AM to 11:50 AM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Dr. NINGARAJU.C' },
+                { code: '26EN1110', title: 'DESIGN STUDIO I: ENGINEERING PROBLEM SOLVING', time: '11:50 AM to 12:40 PM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Dr. SATHYAMOORTHY B' },
+                { code: 'OFFICE-HR', title: 'OFFICE-HR', time: '12:40 PM to 01:30 PM', slotType: 'Activity', location: '', faculty: '' },
+                { code: '26EN1110', title: 'DESIGN STUDIO I: ENGINEERING PROBLEM SOLVING', time: '03:35 PM to 04:25 PM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Dr. SATHYAMOORTHY B' }
               ],
               Tuesday: [
-                { code: '26EN1101', title: 'LINEAR ALGEBRA AND DATA FOUNDATIONS', time: '11:50 AM to 12:40 PM', slotType: 'Theory' },
-                { code: '26EN1107', title: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRO TO C', time: '12:40 PM to 01:30 PM', slotType: 'Theory' }
+                { code: '26EN1105', title: 'ENGINEERING GRAPHICS & GENERATIVE DESIGN FOR CS CLUSTER', time: '08:30 AM to 10:30 AM', slotType: 'Practical', location: 'Laboratory - A405', faculty: 'Mr. KARTHIK S B' },
+                { code: '26EN1107', title: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRODUCTION TO C', time: '11:00 AM to 11:50 AM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Mr. MAHENDRA' },
+                { code: '26EN1101', title: 'LINEAR ALGEBRA AND DATA FOUNDATIONS', time: '12:40 PM to 01:30 PM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Dr. ANUP KUMAR BEHERA' },
+                { code: 'MENTOR-HR', title: 'MENTOR-HR', time: '02:45 PM to 03:35 PM', slotType: 'Activity', location: '', faculty: '' }
               ],
               Wednesday: [
-                { code: '26EN1105', title: 'ENGINEERING GRAPHICS & GENERATIVE DESIGN', time: '08:30 AM to 09:30 AM', slotType: 'Theory' },
-                { code: '26EN1102', title: 'ENGINEERING CHEMISTRY FOR CS CLUSTER', time: '09:30 AM to 10:30 AM', slotType: 'Theory' },
-                { code: '26EN1105', title: 'ENGINEERING GRAPHICS & GENERATIVE DESIGN', time: '11:50 AM to 12:40 PM', slotType: 'Theory' },
-                { code: '26EN1112', title: 'INDIAN CONSTITUTION & LAW', time: '12:40 PM to 01:30 PM', slotType: 'Theory' }
+                { code: '26EN1105', title: 'ENGINEERING GRAPHICS & GENERATIVE DESIGN FOR CS CLUSTER', time: '08:30 AM to 09:30 AM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Mr. KARTHIK S B' },
+                { code: '26EN1107', title: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRODUCTION TO C', time: '09:30 AM to 10:30 AM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Mr. MAHENDRA' },
+                { code: '26EN1111', title: 'ENVIRONMENTAL SCIENCE', time: '11:50 AM to 12:40 PM', slotType: 'Theory', location: 'Seminar Hall - A103', faculty: 'Mr. IZAAZ F' },
+                { code: '26EN1102', title: 'ENGINEERING CHEMISTRY FOR CS CLUSTER', time: '02:45 PM to 04:25 PM', slotType: 'Practical', location: 'Laboratory - A118', faculty: 'Dr. NINGARAJU.C' }
               ],
               Thursday: [
-                { code: '26EN1111', title: 'ENVIRONMENTAL SCIENCE', time: '08:30 AM to 09:30 AM', slotType: 'Theory' }
+                { code: '26EN1111', title: 'ENVIRONMENTAL SCIENCE', time: '08:30 AM to 09:30 AM', slotType: 'Theory', location: 'Seminar Hall - A103', faculty: 'Mr. IZAAZ F' },
+                { code: '26EN1101', title: 'LINEAR ALGEBRA AND DATA FOUNDATIONS', time: '11:50 AM to 12:40 PM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Dr. ANUP KUMAR BEHERA' },
+                { code: '26EN1107', title: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRODUCTION TO C', time: '12:40 PM to 01:30 PM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Mr. MAHENDRA' }
               ],
               Friday: [
-                { code: '26EN1110', title: 'DESIGN STUDIO I: ENGINEERING PROBLEM SOLVING', time: '08:30 AM to 09:30 AM', slotType: 'Theory' }
+                { code: '26EN1110', title: 'DESIGN STUDIO I: ENGINEERING PROBLEM SOLVING', time: '08:30 AM to 09:30 AM', slotType: 'Theory', location: 'Classroom - A343', faculty: 'Dr. SATHYAMOORTHY B' },
+                { code: '26EN1102', title: 'ENGINEERING CHEMISTRY FOR CS CLUSTER', time: '09:30 AM to 10:30 AM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Dr. NINGARAJU.C' },
+                { code: '26EN1105', title: 'ENGINEERING GRAPHICS & GENERATIVE DESIGN FOR CS CLUSTER', time: '11:50 AM to 12:40 PM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Mr. KARTHIK S B' },
+                { code: '26EN1112', title: 'INDIAN CONSTITUTION & LAW', time: '12:40 PM to 01:30 PM', slotType: 'Theory', location: 'Classroom - A420', faculty: 'Ms. GOWTHAMI B N' }
               ],
               Saturday: []
             }
