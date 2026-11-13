@@ -615,7 +615,9 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
         <section className="att-card att-profile-card">
           <div className="att-profile-header">
             <div className="att-profile-title">
-              <User size={20} className="att-icon-user" />
+              <div className="att-profile-icon-wrap">
+                <GraduationCap size={22} />
+              </div>
               <div>
                 <h3>
                   {profile.studentName
@@ -657,7 +659,7 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                   </>
                 ) : (
                   <>
-                    <ChevronDown size={14} /> Portal Login
+                    <ChevronDown size={14} /> {showProfileForm ? "Hide Form" : "Portal Login"}
                   </>
                 )}
               </button>
@@ -716,26 +718,25 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                 </label>
               </div>
 
-              <div className="att-profile-actions">
+              <div className="att-form-submit-row">
                 <button
                   type="submit"
-                  className="primary-button"
+                  className="att-sync-btn"
                   disabled={isSyncing}
-                  style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}
                 >
-                  <RefreshCw size={15} className={isSyncing ? "animate-spin" : ""} />
+                  <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
                   {isSyncing ? "Connecting to DSU ERP..." : "Sync Live Attendance"}
                 </button>
+              </div>
 
-                <div className="att-security-note">
-                  <ShieldCheck size={16} />
-                  <span>
-                    <strong>Student Privacy Guarantee:</strong> Your credentials are sent securely
-                    over SSL only to Dayananda Sagar University GNUMS server for verification. They
-                    are never saved to permanent storage or shared, and are automatically cleared
-                    when you close or leave the site.
-                  </span>
-                </div>
+              <div className="att-security-note">
+                <ShieldCheck size={18} className="att-shield-icon" />
+                <p>
+                  <strong>End-to-End Encrypted &amp; Privacy First:</strong> Your credentials are sent securely
+                  over SSL only to Dayananda Sagar University GNUMS server for verification. They
+                  are never saved to permanent storage or shared, and are automatically cleared
+                  when you close or leave the site.
+                </p>
               </div>
             </form>
           )}
