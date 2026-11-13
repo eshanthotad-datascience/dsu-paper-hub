@@ -87,10 +87,10 @@ function collectAllPdfs(baseDir) {
           semester = isNaN(semNum) ? 1 : semNum;
           if (parts.length > 1) rawBranch = parts[1];
           if (parts.length > 2) examYear = parseYearFromPath(parts[2]);
-        } else if (parts[0] === "sem 2 26") {
+        } else if (parts[0].toLowerCase().startsWith("sem 2")) {
           semester = 2;
           rawBranch = "All branches";
-          examYear = 2026;
+          examYear = parseYearFromPath(parts[0]);
         } else {
           // Sem 1 legacy folders (21, 22, 24, 25 dec, 25 jan)
           semester = 1;
