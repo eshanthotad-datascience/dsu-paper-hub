@@ -1,7 +1,7 @@
 import catalogPapers from "../data/papers.json";
 import { supabase } from "./supabase";
 
-export async function getPapers({ search = "", year = "" } = {}) {
+export async function getPapers({ search = "", semester = "", year = "" } = {}) {
   const { data } = await supabase
     .from("papers")
     .select("*")
@@ -19,8 +19,18 @@ export async function getPapers({ search = "", year = "" } = {}) {
     ...catalogPapers.filter((p) => !seenDriveIds.has(p.drive_file_id)),
   ];
 
-  return merged.filter((paper) =>
-    (!search.trim() || paper.title.toLowerCase().includes(search.trim().toLowerCase()))
-    && (year === "" || paper.semester === Number(year) || paper.year === Number(year)),
-  );
+  const targetSem = semester || year;
+
+  return merged.filter((paper) => {
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      const txt = `${paper.title} ${paper.subject_code || ""} ${paper.branch || ""}`.toLowerCase();
+      if (!txt.includes(q)) return false;
+    }
+    if (targetSem !== "") {
+      const semNum = Number(targetSem);
+      if (paper.semester !== semNum && paper.year !== semNum) return false;
+    }
+    return true;
+  });
 }
