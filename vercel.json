@@ -1,3 +1,8 @@
 {
-  "regions": ["bom1"]
+  "regions": ["bom1"],
+  "functions": {
+    "api/erp/attendance.js": {
+      "maxDuration": 30
+    }
+  }
 }
