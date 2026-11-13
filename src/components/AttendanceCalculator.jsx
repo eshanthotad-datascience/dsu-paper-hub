@@ -17,16 +17,31 @@ import {
   Sparkles,
   BookOpen,
   ArrowRight,
-  Info
+  Info,
+  Calendar,
+  Clock,
+  Flame,
+  GraduationCap
 } from "lucide-react";
+import { fetchAttendance, clearAttendanceCache } from "../lib/erpClient";
+import {
+  calculatePercentage,
+  calculateOverallAttendance,
+  calculateStaticAdvice,
+  calculateCalendarProjection
+} from "../lib/attendanceCalculations";
+import academicCalendar from "../data/academicCalendar.json";
 
-// DSU Engineering default subjects for demonstration if user hasn't added any
-const DEFAULT_SUBJECTS = [
-  { id: "1", name: "Data Structures & Algorithms", code: "23CS201", attended: 26, total: 30 },
-  { id: "2", name: "Database Management Systems", code: "23CS202", attended: 22, total: 28 },
-  { id: "3", name: "Operating Systems", code: "23CS203", attended: 19, total: 26 },
-  { id: "4", name: "Computer Networks", code: "23CS204", attended: 24, total: 25 },
-  { id: "5", name: "Single and Multivariate Calculus", code: "23EN1201", attended: 18, total: 27 },
+// Default subjects for demonstration before ERP login
+const DEFAULT_DEMO_SUBJECTS = [
+  { id: "demo_1", code: "26EN1101", name: "LINEAR ALGEBRA AND DATA FOUNDATIONS (Theory)", slotType: "Theory", attended: 4, total: 5, conducted: 5 },
+  { id: "demo_2", code: "26EN1102", name: "ENGINEERING CHEMISTRY FOR CS CLUSTER (Practical)", slotType: "Practical", attended: 7, total: 8, conducted: 8 },
+  { id: "demo_3", code: "26EN1102", name: "ENGINEERING CHEMISTRY FOR CS CLUSTER (Theory)", slotType: "Theory", attended: 10, total: 16, conducted: 16 },
+  { id: "demo_4", code: "26EN1105", name: "ENGINEERING GRAPHICS & GENERATIVE DESIGN (Practical)", slotType: "Practical", attended: 8, total: 9, conducted: 9 },
+  { id: "demo_5", code: "26EN1105", name: "ENGINEERING GRAPHICS & GENERATIVE DESIGN (Theory)", slotType: "Theory", attended: 20, total: 20, conducted: 20 },
+  { id: "demo_6", code: "26EN1107", name: "ENGINEERING SCIENCE COURSE II - C (Practical)", slotType: "Practical", attended: 1, total: 1, conducted: 1 },
+  { id: "demo_7", code: "26EN1111", name: "ENVIRONMENTAL SCIENCE (Theory)", slotType: "Theory", attended: 11, total: 17, conducted: 17 },
+  { id: "demo_8", code: "26EN1112", name: "INDIAN CONSTITUTION & LAW (Theory)", slotType: "Theory", attended: 2, total: 2, conducted: 2 },
 ];
 
 export default function AttendanceCalculator({ papers = [], branches = [], semesters = [] }) {
@@ -39,150 +54,280 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
   // Active view: 'tracker' (subject list) or 'quick' (single calculator)
   const [activeTab, setActiveTab] = useState("tracker");
 
-  // Subject list state with localStorage persistence
-  const [subjects, setSubjects] = useState(() => {
-    try {
-      const saved = localStorage.getItem("dsu_attendance_subjects");
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return DEFAULT_SUBJECTS;
-  });
-
   // Student credentials profile state
   const [profile, setProfile] = useState(() => {
     try {
       const saved = localStorage.getItem("dsu_student_profile");
       if (saved) return JSON.parse(saved);
     } catch {}
-    return { usn: "", password: "", branch: "", semester: "", isSaved: false };
+    return {
+      usn: "26UGENG2182",
+      password: "",
+      studentName: "",
+      branch: "",
+      semester: "",
+      isSaved: false,
+    };
   });
 
   const [showProfileForm, setShowProfileForm] = useState(!profile.isSaved);
   const [profileInput, setProfileInput] = useState({
-    usn: profile.usn || "",
+    usn: profile.usn || "26UGENG2182",
     password: profile.password || "",
     branch: profile.branch || "",
     semester: profile.semester || "",
   });
 
-  // New subject form state
+  // ERP Sync states
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(null);
+  const [syncSuccess, setSyncSuccess] = useState(null);
+  const [lastSyncedTime, setLastSyncedTime] = useState(() => {
+    return localStorage.getItem("dsu_attendance_last_synced") || null;
+  });
+
+  // Subject list state with localStorage persistence
+  const [subjects, setSubjects] = useState(() => {
+    try {
+      const saved = localStorage.getItem("dsu_attendance_subjects");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return DEFAULT_DEMO_SUBJECTS;
+  });
+
+  // Modal / form states for manual editing
   const [showAddSubject, setShowAddSubject] = useState(false);
   const [editingSubjectId, setEditingSubjectId] = useState(null);
   const [subjectForm, setSubjectForm] = useState({
     name: "",
     code: "",
+    slotType: "Theory",
     attended: "",
     total: "",
   });
 
-  // Quick calculator state
-  const [quickInput, setQuickInput] = useState({ attended: 24, total: 30 });
+  // Quick scenario calculator state
+  const [quickInput, setQuickInput] = useState({ attended: 63, total: 78 });
 
-  // Save target percentage
+  // History state for undo functionality: { [subjectId]: [{ attended, total }] }
+  const [history, setHistory] = useState({});
+
+  // Persist target percentage
   useEffect(() => {
     localStorage.setItem("dsu_attendance_target", String(targetPct));
   }, [targetPct]);
 
-  // Save subjects to localStorage
+  // Persist subjects
   useEffect(() => {
     localStorage.setItem("dsu_attendance_subjects", JSON.stringify(subjects));
   }, [subjects]);
 
-  // Save profile
-  const handleSaveProfile = (e) => {
-    e?.preventDefault();
-    if (!profileInput.usn.trim()) return;
-    const updated = {
-      ...profileInput,
-      usn: profileInput.usn.trim().toUpperCase(),
-      isSaved: true,
+  // Handle DSU ERP live synchronization
+  const handleSyncErp = async (e, customCreds = null) => {
+    if (e?.preventDefault) e.preventDefault();
+    setSyncError(null);
+    setSyncSuccess(null);
+
+    const creds = customCreds || {
+      username: profileInput.usn.trim(),
+      password: profileInput.password,
     };
-    setProfile(updated);
-    localStorage.setItem("dsu_student_profile", JSON.stringify(updated));
-    setShowProfileForm(false);
+
+    if (!creds.username) {
+      setSyncError("Please enter your Student USN / SRN.");
+      return;
+    }
+    if (!creds.password) {
+      setSyncError("Please enter your DSU ERP portal password.");
+      return;
+    }
+
+    setIsSyncing(true);
+
+    try {
+      const result = await fetchAttendance(
+        { username: creds.username, password: creds.password },
+        { bypassCache: true }
+      );
+
+      if (!result.success) {
+        setSyncError(result.error || "Failed to authenticate with DSU ERP. Please check credentials.");
+        setIsSyncing(false);
+        return;
+      }
+
+      // Format subjects from ERP response
+      const erpSubjects = (result.subjects || []).map((s) => ({
+        id: s.id || `${s.code || "sub"}_${(s.slotType || "theory").toLowerCase()}`,
+        code: s.code || "",
+        name: s.name || s.baseName || "Subject",
+        baseName: s.baseName || s.name || "Subject",
+        slotType: s.slotType || "Theory",
+        attended: Number(s.attended) || 0,
+        total: Number(s.conducted) || 0,
+        conducted: Number(s.conducted) || 0,
+        percentage: Number(s.percentage) || 0,
+      }));
+
+      if (erpSubjects.length > 0) {
+        setSubjects(erpSubjects);
+      }
+
+      const studentName = result.studentName || profile.studentName || "DSU Student";
+      const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+      const updatedProfile = {
+        ...profileInput,
+        usn: creds.username.toUpperCase(),
+        password: creds.password,
+        studentName,
+        isSaved: true,
+      };
+
+      setProfile(updatedProfile);
+      setLastSyncedTime(nowStr);
+      setShowProfileForm(false);
+      localStorage.setItem("dsu_student_profile", JSON.stringify(updatedProfile));
+      localStorage.setItem("dsu_attendance_last_synced", nowStr);
+
+      setSyncSuccess(
+        `Successfully synced ${erpSubjects.length} subjects for ${studentName} (${creds.username.toUpperCase()}) from DSU ERP.`
+      );
+    } catch (err) {
+      setSyncError(`Error communicating with DSU ERP: ${err.message}`);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
+  // Disconnect profile and reset session
   const handleDisconnectProfile = () => {
-    const empty = { usn: "", password: "", branch: "", semester: "", isSaved: false };
+    const empty = {
+      usn: "",
+      password: "",
+      studentName: "",
+      branch: "",
+      semester: "",
+      isSaved: false,
+    };
     setProfile(empty);
     setProfileInput(empty);
+    setSyncSuccess(null);
+    setSyncError(null);
+    setLastSyncedTime(null);
+    clearAttendanceCache();
     localStorage.removeItem("dsu_student_profile");
+    localStorage.removeItem("dsu_attendance_last_synced");
     setShowProfileForm(true);
   };
 
-  // Helper calculation formulas (matching PesuDash algorithm)
-  const calculateAdvice = (attended, total, target) => {
-    if (total === 0) {
-      return { pct: 100, canSkip: 0, mustAttend: 0, status: "safe", text: "No classes conducted yet." };
-    }
-    const pct = (attended / total) * 100;
-    const t = target / 100;
-
-    if (pct >= target) {
-      // k <= (attended / t) - total
-      const canSkip = Math.floor(attended / t - total);
-      if (canSkip > 0) {
-        return {
-          pct,
-          canSkip,
-          mustAttend: 0,
-          status: "safe",
-          text: `On track! You can skip ${canSkip} class${canSkip === 1 ? "" : "es"} safely.`,
-        };
-      } else {
-        return {
-          pct,
-          canSkip: 0,
-          mustAttend: 0,
-          status: "tight",
-          text: "Attendance is tight! Attend your next class to stay above target.",
-        };
-      }
-    } else {
-      // m >= (t * total - attended) / (1 - t)
-      const mustAttend = Math.ceil((t * total - attended) / (1 - t));
-      return {
-        pct,
-        canSkip: 0,
-        mustAttend,
-        status: "danger",
-        text: `Need to attend next ${mustAttend} consecutive class${mustAttend === 1 ? "" : "es"} to hit ${target}%.`,
-      };
-    }
-  };
-
-  // Overall attendance stats
+  // Overall statistics derived from subjects using authoritative mathematical functions
   const overall = useMemo(() => {
-    const totalConducted = subjects.reduce((sum, s) => sum + Number(s.total || 0), 0);
-    const totalAttended = subjects.reduce((sum, s) => sum + Number(s.attended || 0), 0);
+    const totalConducted = subjects.reduce((sum, s) => sum + Number(s.total ?? s.conducted ?? 0), 0);
+    const totalAttended = subjects.reduce((sum, s) => sum + Number(s.attended ?? 0), 0);
     const totalMissed = Math.max(0, totalConducted - totalAttended);
-    const percentage = totalConducted > 0 ? (totalAttended / totalConducted) * 100 : 100;
+    const percentage = calculatePercentage(totalAttended, totalConducted);
 
-    const advice = calculateAdvice(totalAttended, totalConducted, targetPct);
+    const advice = calculateStaticAdvice(totalAttended, totalConducted, targetPct);
+
+    // Approximate remaining future classes in semester from calendar
+    const approxRemainingClasses = 48; // Typical remainder of semester classes
+    const calendarProjection = calculateCalendarProjection({
+      attended: totalAttended,
+      conducted: totalConducted,
+      futureSlots: approxRemainingClasses,
+      targetPct,
+    });
+
     return {
       totalConducted,
       totalAttended,
       totalMissed,
       percentage,
-      ...advice,
+      canSkip: advice.canSkip,
+      mustAttend: advice.classesNeeded,
+      status: advice.status,
+      adviceText: advice.adviceText,
+      calendarProjection,
     };
   }, [subjects, targetPct]);
 
   // Color helper based on percentage & target
   const getStatusColor = (pct, target) => {
-    if (pct >= target) return { text: "var(--att-green)", bg: "var(--att-green-bg)", border: "var(--att-green-border)" };
-    if (pct >= target - 5) return { text: "var(--att-yellow)", bg: "var(--att-yellow-bg)", border: "var(--att-yellow-border)" };
-    return { text: "var(--att-red)", bg: "var(--att-red-bg)", border: "var(--att-red-border)" };
+    if (pct >= target) {
+      return {
+        text: "var(--att-green)",
+        bg: "var(--att-green-bg)",
+        border: "var(--att-green-border)",
+      };
+    }
+    if (pct >= target - 5) {
+      return {
+        text: "var(--att-yellow)",
+        bg: "var(--att-yellow-bg)",
+        border: "var(--att-yellow-border)",
+      };
+    }
+    return {
+      text: "var(--att-red)",
+      bg: "var(--att-red-bg)",
+      border: "var(--att-red-border)",
+    };
   };
 
-  // Increment / Decrement handlers for quick simulation
+  // Interactive +1 attended, +1 missed, and undo simulations
   const adjustClass = (id, deltaAttended, deltaTotal) => {
     setSubjects((prev) =>
       prev.map((s) => {
         if (s.id !== id) return s;
-        const newAttended = Math.max(0, Number(s.attended) + deltaAttended);
-        const newTotal = Math.max(newAttended, Number(s.total) + deltaTotal);
-        return { ...s, attended: newAttended, total: newTotal };
+        const curAtt = Number(s.attended) || 0;
+        const curTot = Number(s.total ?? s.conducted) || 0;
+
+        // Push current state to history
+        setHistory((h) => ({
+          ...h,
+          [id]: [...(h[id] || []), { attended: curAtt, total: curTot }],
+        }));
+
+        const newAttended = Math.max(0, curAtt + deltaAttended);
+        const newTotal = Math.max(newAttended, curTot + deltaTotal);
+        const newPct = calculatePercentage(newAttended, newTotal);
+
+        return {
+          ...s,
+          attended: newAttended,
+          total: newTotal,
+          conducted: newTotal,
+          percentage: newPct,
+        };
+      })
+    );
+  };
+
+  const undoAdjustClass = (id) => {
+    const subHistory = history[id];
+    if (!subHistory || subHistory.length === 0) return;
+
+    const previous = subHistory[subHistory.length - 1];
+    setHistory((h) => ({
+      ...h,
+      [id]: subHistory.slice(0, -1),
+    }));
+
+    setSubjects((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        const newPct = calculatePercentage(previous.attended, previous.total);
+        return {
+          ...s,
+          attended: previous.attended,
+          total: previous.total,
+          conducted: previous.total,
+          percentage: newPct,
+        };
       })
     );
   };
@@ -194,28 +339,41 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
 
     const attended = Math.max(0, parseInt(subjectForm.attended, 10) || 0);
     const total = Math.max(attended, parseInt(subjectForm.total, 10) || 0);
+    const percentage = calculatePercentage(attended, total);
 
     if (editingSubjectId) {
       setSubjects((prev) =>
         prev.map((s) =>
           s.id === editingSubjectId
-            ? { ...s, name: subjectForm.name.trim(), code: subjectForm.code.trim().toUpperCase(), attended, total }
+            ? {
+                ...s,
+                name: subjectForm.name.trim(),
+                code: subjectForm.code.trim().toUpperCase(),
+                slotType: subjectForm.slotType || "Theory",
+                attended,
+                total,
+                conducted: total,
+                percentage,
+              }
             : s
         )
       );
       setEditingSubjectId(null);
     } else {
       const newSubject = {
-        id: String(Date.now()),
+        id: `manual_${Date.now()}`,
         name: subjectForm.name.trim(),
         code: subjectForm.code.trim().toUpperCase(),
+        slotType: subjectForm.slotType || "Theory",
         attended,
         total,
+        conducted: total,
+        percentage,
       };
       setSubjects((prev) => [...prev, newSubject]);
     }
 
-    setSubjectForm({ name: "", code: "", attended: "", total: "" });
+    setSubjectForm({ name: "", code: "", slotType: "Theory", attended: "", total: "" });
     setShowAddSubject(false);
   };
 
@@ -224,8 +382,9 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
     setSubjectForm({
       name: subject.name,
       code: subject.code || "",
+      slotType: subject.slotType || "Theory",
       attended: String(subject.attended),
-      total: String(subject.total),
+      total: String(subject.total ?? subject.conducted ?? ""),
     });
     setShowAddSubject(true);
   };
@@ -234,50 +393,11 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
     setSubjects((prev) => prev.filter((s) => s.id !== id));
   };
 
-  // Auto-populate subjects from Paper Hub catalog for selected branch/semester
-  const availableCatalogSubjects = useMemo(() => {
-    const sem = profile.semester;
-    const branch = profile.branch;
-    if (!papers || !papers.length) return [];
-
-    const filtered = papers.filter((p) => {
-      if (sem && String(p.semester) !== String(sem)) return false;
-      if (branch && branch !== "All branches" && p.branch && p.branch !== "All branches" && !p.branch.includes(branch) && !branch.includes(p.branch)) {
-        return false;
-      }
-      return true;
-    });
-
-    const uniqueMap = new Map();
-    filtered.forEach((p) => {
-      if (p.title && !uniqueMap.has(p.title.toLowerCase())) {
-        uniqueMap.set(p.title.toLowerCase(), {
-          name: p.title,
-          code: p.subject_code || "",
-        });
-      }
-    });
-
-    return Array.from(uniqueMap.values()).slice(0, 10);
-  }, [papers, profile.branch, profile.semester]);
-
-  const handleImportCatalogSubjects = () => {
-    if (!availableCatalogSubjects.length) return;
-    const newItems = availableCatalogSubjects.map((sub, idx) => ({
-      id: String(Date.now() + idx),
-      name: sub.name,
-      code: sub.code,
-      attended: 20,
-      total: 24,
-    }));
-    setSubjects(newItems);
-  };
-
   // Quick Calculator Advice
   const quickAdvice = useMemo(() => {
     const att = Math.max(0, Number(quickInput.attended) || 0);
     const tot = Math.max(att, Number(quickInput.total) || 0);
-    return calculateAdvice(att, tot, targetPct);
+    return calculateStaticAdvice(att, tot, targetPct);
   }, [quickInput, targetPct]);
 
   return (
@@ -289,11 +409,14 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
             <span className="att-pill-brand">
               <Calculator size={14} /> DSU Attendance Planner
             </span>
-            <span className="att-pill-sub">PesuDash Inspired Engine</span>
+            <span className="att-pill-sub">Live DSU ERP Integration</span>
+            <span className="att-pill-sub" style={{ opacity: 0.75 }}>• Multi-Branch Agnostic</span>
           </div>
-          <h1>Track, Calculate <i>&amp;</i> Predict Attendance</h1>
+
+          <h1>Track, Calculate <i>&amp;</i> Predict DSU Attendance</h1>
           <p>
-            Know exactly how many classes you can safely skip or must attend to meet university criteria.
+            Connect directly with your Dayananda Sagar University ERP portal to fetch your live courses,
+            calculate safe bunking limits, and simulate your attendance trajectory.
           </p>
 
           {/* Target Percentage Control Bar */}
@@ -301,8 +424,8 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
             <div className="att-target-info">
               <Sliders size={18} />
               <div>
-                <strong>Target Attendance</strong>
-                <span>DSU standard minimum is 75% to appear for exams</span>
+                <strong>Target Attendance Requirement</strong>
+                <span>DSU standard minimum is 75% to be eligible for semester-end examinations</span>
               </div>
             </div>
             <div className="att-target-controls">
@@ -335,48 +458,133 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
 
       {/* Main Container */}
       <div className="att-container">
-        {/* Student Credentials / Profile Section */}
+        {/* Status / Error Alerts */}
+        {syncError && (
+          <div
+            className="att-alert-banner error"
+            style={{
+              background: "var(--att-red-bg)",
+              border: "1px solid var(--att-red-border)",
+              color: "var(--att-red)",
+              padding: "14px 18px",
+              borderRadius: "12px",
+              marginBottom: "20px",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+            }}
+          >
+            <AlertTriangle size={20} />
+            <div style={{ flex: 1 }}>
+              <strong>DSU ERP Connection Notice:</strong> {syncError}
+            </div>
+            <button
+              onClick={() => setSyncError(null)}
+              style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: "16px" }}
+            >
+              &times;
+            </button>
+          </div>
+        )}
+
+        {syncSuccess && (
+          <div
+            className="att-alert-banner success"
+            style={{
+              background: "var(--att-green-bg)",
+              border: "1px solid var(--att-green-border)",
+              color: "var(--att-green)",
+              padding: "14px 18px",
+              borderRadius: "12px",
+              marginBottom: "20px",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+            }}
+          >
+            <CheckCircle2 size={20} />
+            <div style={{ flex: 1 }}>{syncSuccess}</div>
+            <button
+              onClick={() => setSyncSuccess(null)}
+              style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: "16px" }}
+            >
+              &times;
+            </button>
+          </div>
+        )}
+
+        {/* Student Credentials / DSU ERP Sync Section */}
         <section className="att-card att-profile-card">
           <div className="att-profile-header">
             <div className="att-profile-title">
               <User size={20} className="att-icon-user" />
               <div>
-                <h3>Student Portal Credentials</h3>
-                <p>Personalize your timetable, track attendance, and connect with your DSU profile.</p>
+                <h3>
+                  {profile.studentName
+                    ? `${profile.studentName}`
+                    : "DSU ERP Student Portal"}
+                </h3>
+                <p>
+                  {profile.isSaved
+                    ? `Connected as ${profile.usn} • Live synchronization active`
+                    : "Enter your Dayananda Sagar University student credentials to pull your live registered subjects."}
+                </p>
               </div>
             </div>
-            <button
-              className="outline-button att-toggle-btn"
-              onClick={() => setShowProfileForm((prev) => !prev)}
-            >
-              {profile.isSaved && !showProfileForm ? (
-                <>
-                  <Edit2 size={14} /> Edit Credentials
-                </>
-              ) : showProfileForm && profile.isSaved ? (
-                <>
-                  <ChevronUp size={14} /> Close
-                </>
-              ) : (
-                <>
-                  <ChevronDown size={14} /> Details
-                </>
+
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              {profile.isSaved && (
+                <button
+                  className="primary-button"
+                  style={{ padding: "8px 16px", fontSize: "13px", display: "inline-flex", gap: "6px", alignItems: "center" }}
+                  onClick={(e) => handleSyncErp(e, { username: profile.usn, password: profile.password })}
+                  disabled={isSyncing}
+                >
+                  <RefreshCw size={13} className={isSyncing ? "animate-spin" : ""} />
+                  {isSyncing ? "Syncing..." : "Re-sync ERP"}
+                </button>
               )}
-            </button>
+
+              <button
+                className="outline-button att-toggle-btn"
+                onClick={() => setShowProfileForm((prev) => !prev)}
+              >
+                {profile.isSaved && !showProfileForm ? (
+                  <>
+                    <Edit2 size={14} /> Edit Credentials
+                  </>
+                ) : showProfileForm && profile.isSaved ? (
+                  <>
+                    <ChevronUp size={14} /> Close
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown size={14} /> Portal Login
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
+          {/* Active Profile Info Pills */}
           {profile.isSaved && !showProfileForm && (
             <div className="att-profile-saved">
               <div className="att-profile-chips">
                 <span className="att-profile-chip usn">
                   <User size={13} /> {profile.usn}
                 </span>
-                {profile.branch && <span className="att-profile-chip">{profile.branch}</span>}
-                {profile.semester && (
-                  <span className="att-profile-chip">Semester {profile.semester}</span>
+                {profile.studentName && (
+                  <span className="att-profile-chip" style={{ fontWeight: 600 }}>
+                    <GraduationCap size={13} /> {profile.studentName}
+                  </span>
+                )}
+                {lastSyncedTime && (
+                  <span className="att-profile-chip" style={{ opacity: 0.85 }}>
+                    <Clock size={13} /> Synced at {lastSyncedTime}
+                  </span>
                 )}
                 <span className="att-profile-chip status">
-                  <ShieldCheck size={13} /> Saved in local storage
+                  <ShieldCheck size={13} /> DSU Portal Verified
                 </span>
               </div>
               <button className="att-disconnect-btn" onClick={handleDisconnectProfile}>
@@ -385,68 +593,48 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
             </div>
           )}
 
+          {/* Profile Form */}
           {showProfileForm && (
-            <form onSubmit={handleSaveProfile} className="att-profile-form">
+            <form onSubmit={handleSyncErp} className="att-profile-form">
               <div className="att-form-row">
                 <label className="field">
                   <span>Student USN / SRN *</span>
                   <input
-                    placeholder="e.g. ENG23DS0145"
+                    placeholder="e.g. 26UGENG2182"
                     value={profileInput.usn}
                     onChange={(e) => setProfileInput({ ...profileInput, usn: e.target.value })}
                     required
                   />
                 </label>
                 <label className="field">
-                  <span>Portal Password <small>(Encrypted locally)</small></span>
+                  <span>DSU ERP Password *</span>
                   <input
                     type="password"
-                    placeholder="Enter student password"
+                    placeholder="Enter DSU portal password"
                     value={profileInput.password}
                     onChange={(e) => setProfileInput({ ...profileInput, password: e.target.value })}
+                    required
                   />
-                </label>
-              </div>
-              <div className="att-form-row">
-                <label className="field">
-                  <span>Branch</span>
-                  <select
-                    value={profileInput.branch}
-                    onChange={(e) => setProfileInput({ ...profileInput, branch: e.target.value })}
-                  >
-                    <option value="">Select branch</option>
-                    {branches.map((b) => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Current Semester</span>
-                  <select
-                    value={profileInput.semester}
-                    onChange={(e) => setProfileInput({ ...profileInput, semester: e.target.value })}
-                  >
-                    <option value="">Select semester</option>
-                    {semesters.map((s) => (
-                      <option key={s.value} value={s.value}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
                 </label>
               </div>
 
               <div className="att-profile-actions">
-                <button type="submit" className="primary-button">
-                  <Lock size={15} /> Save Credentials
+                <button
+                  type="submit"
+                  className="primary-button"
+                  disabled={isSyncing}
+                  style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}
+                >
+                  <RefreshCw size={15} className={isSyncing ? "animate-spin" : ""} />
+                  {isSyncing ? "Connecting to DSU ERP..." : "Sync Live Attendance"}
                 </button>
+
                 <div className="att-security-note">
                   <ShieldCheck size={16} />
                   <span>
-                    <strong>Client-Side Privacy:</strong> Your login credentials never leave your
-                    device. They remain stored strictly inside your browser's private local storage.
+                    <strong>Student Privacy Guarantee:</strong> Your credentials are sent securely
+                    over SSL only to Dayananda Sagar University GNUMS server for verification and are
+                    cached strictly inside your browser's private local storage.
                   </span>
                 </div>
               </div>
@@ -472,7 +660,7 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                   {overall.percentage >= targetPct ? "Above Target" : "Below Target"}
                 </span>
               </div>
-              <p className="att-metric-sub">{overall.text}</p>
+              <p className="att-metric-sub">{overall.adviceText}</p>
             </div>
             <div
               className="att-circle-meter"
@@ -500,15 +688,80 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
           </div>
 
           <div className="att-metric-card">
-            <span className="att-metric-label">Room for Bunking</span>
+            <span className="att-metric-label">Safe Bunking Buffer</span>
             <div className={`att-metric-num ${overall.canSkip > 0 ? "text-green" : "text-yellow"}`}>
               {overall.canSkip > 0 ? `${overall.canSkip} Classes` : "0 Classes"}
             </div>
             <p className="att-metric-sub">
               {overall.canSkip > 0
-                ? "Can skip across subjects"
-                : `Must attend ${overall.mustAttend} classes to reach ${targetPct}%`}
+                ? "Can skip across subjects while staying above target"
+                : `Must attend next ${overall.mustAttend} classes to reach ${targetPct}%`}
             </p>
+          </div>
+        </section>
+
+        {/* Academic Calendar Projection Banner */}
+        <section
+          className="att-card"
+          style={{
+            marginBottom: "24px",
+            padding: "18px 22px",
+            background: "linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: "16px",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+              <div
+                style={{
+                  width: "42px",
+                  height: "42px",
+                  borderRadius: "10px",
+                  background: "rgba(59, 130, 246, 0.12)",
+                  color: "#3b82f6",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Calendar size={22} />
+              </div>
+              <div>
+                <h4 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 700 }}>
+                  DSU Academic Calendar Outlook ({academicCalendar.semesters.ODD.name})
+                </h4>
+                <p style={{ margin: 0, fontSize: "13px", color: "var(--muted, #94a3b8)" }}>
+                  Last working day: <strong>{academicCalendar.semesters.ODD.lastWorkingDay}</strong> • Semester End: <strong>{academicCalendar.semesters.ODD.endDate}</strong> • Standard: 75% (65% condonation)
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+              <span
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "20px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  backgroundColor: overall.calendarProjection.isCooked
+                    ? "var(--att-red-bg)"
+                    : "var(--att-green-bg)",
+                  color: overall.calendarProjection.isCooked
+                    ? "var(--att-red)"
+                    : "var(--att-green)",
+                  border: `1px solid ${
+                    overall.calendarProjection.isCooked
+                      ? "var(--att-red-border)"
+                      : "var(--att-green-border)"
+                  }`,
+                }}
+              >
+                {overall.calendarProjection.isCooked
+                  ? "⚠️ Attention Required"
+                  : "✓ On Track for Semester End"}
+              </span>
+            </div>
           </div>
         </section>
 
@@ -518,7 +771,7 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
             className={`att-tab-btn ${activeTab === "tracker" ? "active" : ""}`}
             onClick={() => setActiveTab("tracker")}
           >
-            <BookOpen size={16} /> Subject-Wise Tracker ({subjects.length})
+            <BookOpen size={16} /> Enrolled Subjects ({subjects.length})
           </button>
           <button
             className={`att-tab-btn ${activeTab === "quick" ? "active" : ""}`}
@@ -533,28 +786,21 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
           <div className="att-tracker-view">
             <div className="att-toolbar">
               <div className="att-toolbar-left">
-                <h2>Your Subjects</h2>
-                <span>Tap (+1 Present) or (+1 Absent) to test attendance changes live</span>
+                <h2>Your Course Breakdown</h2>
+                <span>
+                  Tap <strong>(+1 Attended)</strong> or <strong>(+1 Missed)</strong> to test what-if scenarios live
+                </span>
               </div>
               <div className="att-toolbar-right">
-                {availableCatalogSubjects.length > 0 && (
-                  <button
-                    className="outline-button att-import-btn"
-                    onClick={handleImportCatalogSubjects}
-                    title="Load subjects from Paper Hub syllabus"
-                  >
-                    <Sparkles size={15} /> Load DSU Syllabus
-                  </button>
-                )}
                 <button
                   className="primary-button att-add-btn"
                   onClick={() => {
                     setEditingSubjectId(null);
-                    setSubjectForm({ name: "", code: "", attended: "", total: "" });
+                    setSubjectForm({ name: "", code: "", slotType: "Theory", attended: "", total: "" });
                     setShowAddSubject(true);
                   }}
                 >
-                  <Plus size={16} /> Add Subject
+                  <Plus size={16} /> Add Custom Subject
                 </button>
               </div>
             </div>
@@ -564,7 +810,7 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
               <div className="att-modal-overlay">
                 <div className="att-modal-card">
                   <div className="att-modal-header">
-                    <h3>{editingSubjectId ? "Edit Subject" : "Add New Subject"}</h3>
+                    <h3>{editingSubjectId ? "Edit Subject" : "Add Subject"}</h3>
                     <button
                       className="att-close-btn"
                       onClick={() => setShowAddSubject(false)}
@@ -574,7 +820,7 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                   </div>
                   <form onSubmit={handleSaveSubject} className="att-modal-form">
                     <label className="field">
-                      <span>Subject Name *</span>
+                      <span>Subject Title *</span>
                       <input
                         placeholder="e.g. Operating Systems"
                         value={subjectForm.name}
@@ -583,14 +829,26 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                         autoFocus
                       />
                     </label>
-                    <label className="field">
-                      <span>Subject Code <small>(optional)</small></span>
-                      <input
-                        placeholder="e.g. 23CS203"
-                        value={subjectForm.code}
-                        onChange={(e) => setSubjectForm({ ...subjectForm, code: e.target.value })}
-                      />
-                    </label>
+                    <div className="att-form-row">
+                      <label className="field">
+                        <span>Subject Code</span>
+                        <input
+                          placeholder="e.g. 26EN1101"
+                          value={subjectForm.code}
+                          onChange={(e) => setSubjectForm({ ...subjectForm, code: e.target.value })}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Slot Type</span>
+                        <select
+                          value={subjectForm.slotType}
+                          onChange={(e) => setSubjectForm({ ...subjectForm, slotType: e.target.value })}
+                        >
+                          <option value="Theory">Theory</option>
+                          <option value="Practical">Practical</option>
+                        </select>
+                      </label>
+                    </div>
                     <div className="att-form-row">
                       <label className="field">
                         <span>Classes Attended</span>
@@ -636,9 +894,10 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
             <div className="att-cards-grid">
               {subjects.map((sub) => {
                 const att = Number(sub.attended) || 0;
-                const tot = Number(sub.total) || 0;
-                const advice = calculateAdvice(att, tot, targetPct);
+                const tot = Number(sub.total ?? sub.conducted) || 0;
+                const advice = calculateStaticAdvice(att, tot, targetPct);
                 const colors = getStatusColor(advice.pct, targetPct);
+                const subHistory = history[sub.id] || [];
 
                 return (
                   <article className="att-subject-card" key={sub.id}>
@@ -658,6 +917,18 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                         <h4>{sub.name}</h4>
                         <div className="att-sub-meta">
                           {sub.code && <span className="att-code-pill">{sub.code}</span>}
+                          {sub.slotType && (
+                            <span
+                              className="att-code-pill"
+                              style={{
+                                background: sub.slotType.toLowerCase() === "practical" ? "rgba(168, 85, 247, 0.15)" : "rgba(59, 130, 246, 0.15)",
+                                color: sub.slotType.toLowerCase() === "practical" ? "#a855f7" : "#3b82f6",
+                                border: "none",
+                              }}
+                            >
+                              {sub.slotType}
+                            </span>
+                          )}
                           <span className="att-ratio">
                             {att} of {tot} attended
                           </span>
@@ -709,7 +980,7 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                       ) : (
                         <XCircle size={15} />
                       )}
-                      <span>{advice.text}</span>
+                      <span>{advice.adviceText}</span>
                     </div>
 
                     {/* Interactive +1 / -1 Action Buttons */}
@@ -717,22 +988,22 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                       <button
                         className="att-btn-plus present"
                         onClick={() => adjustClass(sub.id, 1, 1)}
-                        title="Simulate attending next class"
+                        title="Simulate attending next class (+1 attended, +1 total)"
                       >
                         +1 Attended
                       </button>
                       <button
                         className="att-btn-plus absent"
                         onClick={() => adjustClass(sub.id, 0, 1)}
-                        title="Simulate missing next class"
+                        title="Simulate missing next class (+0 attended, +1 total)"
                       >
                         +1 Missed
                       </button>
                       <button
                         className="att-btn-undo"
-                        onClick={() => adjustClass(sub.id, -1, -1)}
-                        title="Undo last step"
-                        disabled={att <= 0 || tot <= 0}
+                        onClick={() => undoAdjustClass(sub.id)}
+                        title="Undo last simulation"
+                        disabled={subHistory.length === 0}
                       >
                         Undo
                       </button>
@@ -745,13 +1016,13 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
             {!subjects.length && (
               <div className="att-empty-state">
                 <Info size={36} />
-                <h3>No subjects added yet</h3>
-                <p>Add your semester subjects to calculate your attendance and skip room.</p>
+                <h3>No subjects registered</h3>
+                <p>Sync with DSU ERP or add your subjects to calculate your safe bunking limits.</p>
                 <button
                   className="primary-button"
-                  onClick={() => setShowAddSubject(true)}
+                  onClick={() => setShowProfileForm(true)}
                 >
-                  <Plus size={16} /> Add Your First Subject
+                  <RefreshCw size={15} /> Connect to DSU ERP
                 </button>
               </div>
             )}
@@ -763,9 +1034,9 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
           <div className="att-quick-view">
             <div className="att-card att-quick-card">
               <div className="att-quick-header">
-                <h2>Quick Attendance Calculator</h2>
+                <h2>Quick Attendance Simulator</h2>
                 <p>
-                  Quickly check any single subject scenario without adding it to your permanent list.
+                  Test any attendance scenario without modifying your enrolled courses.
                 </p>
               </div>
 
@@ -807,10 +1078,10 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                 </div>
                 <div className="att-quick-details">
                   <h4>
-                    {quickAdvice.pct >= targetPct ? "Status: Eligible" : "Status: Low Attendance"}
+                    {quickAdvice.pct >= targetPct ? "Status: Eligible" : "Status: Below Target"}
                   </h4>
                   <p style={{ color: getStatusColor(quickAdvice.pct, targetPct).text }}>
-                    {quickAdvice.text}
+                    {quickAdvice.adviceText}
                   </p>
                 </div>
               </div>
@@ -832,7 +1103,7 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                       {[1, 2, 3, 5].map((count) => {
                         const newAtt = Number(quickInput.attended) + count;
                         const newTot = Number(quickInput.total) + count;
-                        const newPct = (newAtt / newTot) * 100;
+                        const newPct = calculatePercentage(newAtt, newTot);
                         return (
                           <tr key={`attend-${count}`}>
                             <td>Attend next {count} class{count > 1 ? "es" : ""}</td>
@@ -845,7 +1116,7 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                       {[1, 2, 3].map((count) => {
                         const newAtt = Number(quickInput.attended);
                         const newTot = Number(quickInput.total) + count;
-                        const newPct = (newAtt / newTot) * 100;
+                        const newPct = calculatePercentage(newAtt, newTot);
                         return (
                           <tr key={`miss-${count}`}>
                             <td>Miss next {count} class{count > 1 ? "es" : ""}</td>

@@ -1,0 +1,49 @@
+{
+  "university": "Dayananda Sagar University (DSU)",
+  "academicYear": "2024-2025",
+  "currentSemesterType": "ODD",
+  "minimumAttendance": 75,
+  "condonationThreshold": 65,
+  "saturdayRule": "OFF_2ND_4TH",
+  "semesters": {
+    "ODD": {
+      "name": "Odd Semester (Sem 1, 3, 5, 7)",
+      "startDate": "2024-08-16",
+      "endDate": "2024-12-20",
+      "lastWorkingDay": "2024-12-14",
+      "examStartDate": "2024-12-23"
+    },
+    "EVEN": {
+      "name": "Even Semester (Sem 2, 4, 6, 8)",
+      "startDate": "2025-01-20",
+      "endDate": "2025-05-30",
+      "lastWorkingDay": "2025-05-24",
+      "examStartDate": "2025-06-02"
+    }
+  },
+  "semesterStartDate": "2024-08-16",
+  "semesterEndDate": "2024-12-20",
+  "lastWorkingDay": "2024-12-14",
+  "holidays": [
+    { "date": "2024-08-15", "name": "Independence Day" },
+    { "date": "2024-09-07", "name": "Ganesh Chaturthi" },
+    { "date": "2024-09-16", "name": "Eid Milad" },
+    { "date": "2024-10-02", "name": "Mahatma Gandhi Jayanti" },
+    { "date": "2024-10-11", "name": "Maha Navami / Ayudha Puja" },
+    { "date": "2024-10-12", "name": "Vijayadashami" },
+    { "date": "2024-10-17", "name": "Maharshi Valmiki Jayanti" },
+    { "date": "2024-10-31", "name": "Naraka Chaturdashi" },
+    { "date": "2024-11-01", "name": "Kannada Rajyotsava" },
+    { "date": "2024-11-02", "name": "Balipadyami / Deepavali" },
+    { "date": "2024-11-18", "name": "Kanakadasa Jayanti" },
+    { "date": "2024-12-25", "name": "Christmas" },
+    { "date": "2025-01-14", "name": "Makara Sankranti" },
+    { "date": "2025-01-26", "name": "Republic Day" },
+    { "date": "2025-02-26", "name": "Maha Shivaratri" },
+    { "date": "2025-03-30", "name": "Ugadi" },
+    { "date": "2025-03-31", "name": "Id-ul-Fitr" },
+    { "date": "2025-04-14", "name": "Dr. B.R. Ambedkar Jayanti" },
+    { "date": "2025-04-18", "name": "Good Friday" },
+    { "date": "2025-05-01", "name": "May Day" }
+  ]
+}
