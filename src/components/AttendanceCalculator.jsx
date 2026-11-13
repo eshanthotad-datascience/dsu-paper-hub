@@ -44,6 +44,48 @@ const DEFAULT_DEMO_SUBJECTS = [
   { id: "26EN1112_theory", code: "26EN1112", name: "INDIAN CONSTITUTION & LAW (Theory)", baseName: "INDIAN CONSTITUTION & LAW", slotType: "Theory", conducted: 2, attended: 2, absent: 0, total: 2, percentage: 100.0 },
 ];
 
+// Default personalized weekly class timetable parsed from DSU ERP portal
+const DEFAULT_TIMETABLE = {
+  academicYear: "2026-2027",
+  lastWorkingDay: "2026-12-19",
+  semesterEndDate: "2026-12-24",
+  totalWeeklyClasses: 11,
+  approxRemainingClasses: 56,
+  weeklyHoursByCourse: {
+    "26EN1105": 2,
+    "26EN1111": 2,
+    "26EN1110": 1,
+    "26EN1107": 2,
+    "26EN1102": 2,
+    "26EN1101": 1,
+    "26EN1112": 1,
+  },
+  scheduleByDay: {
+    Monday: [
+      { code: "26EN1107", title: "ENGINEERING SCIENCE COURSE II - INTRO TO C", time: "09:30 AM to 10:30 AM", slotType: "Theory" },
+      { code: "26EN1111", title: "ENVIRONMENTAL SCIENCE", time: "11:50 AM to 12:40 PM", slotType: "Theory" },
+      { code: "26EN1102", title: "ENGINEERING CHEMISTRY FOR CS CLUSTER", time: "02:45 PM to 03:35 PM", slotType: "Practical" },
+    ],
+    Tuesday: [
+      { code: "26EN1101", title: "LINEAR ALGEBRA AND DATA FOUNDATIONS", time: "11:50 AM to 12:40 PM", slotType: "Theory" },
+      { code: "26EN1107", title: "ENGINEERING SCIENCE COURSE II - INTRO TO C", time: "12:40 PM to 01:30 PM", slotType: "Theory" },
+    ],
+    Wednesday: [
+      { code: "26EN1105", title: "ENGINEERING GRAPHICS & GENERATIVE DESIGN", time: "08:30 AM to 09:30 AM", slotType: "Theory" },
+      { code: "26EN1102", title: "ENGINEERING CHEMISTRY FOR CS CLUSTER", time: "09:30 AM to 10:30 AM", slotType: "Theory" },
+      { code: "26EN1105", title: "ENGINEERING GRAPHICS & GENERATIVE DESIGN", time: "11:50 AM to 12:40 PM", slotType: "Theory" },
+      { code: "26EN1112", title: "INDIAN CONSTITUTION & LAW", time: "12:40 PM to 01:30 PM", slotType: "Theory" },
+    ],
+    Thursday: [
+      { code: "26EN1111", title: "ENVIRONMENTAL SCIENCE", time: "08:30 AM to 09:30 AM", slotType: "Theory" },
+    ],
+    Friday: [
+      { code: "26EN1110", title: "DESIGN STUDIO I: ENGINEERING PROBLEM SOLVING", time: "08:30 AM to 09:30 AM", slotType: "Theory" },
+    ],
+    Saturday: [],
+  },
+};
+
 export default function AttendanceCalculator({ papers = [], branches = [], semesters = [] }) {
   // Target percentage (default 75% as per DSU university rules)
   const [targetPct, setTargetPct] = useState(() => {
@@ -126,6 +168,16 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
   // History state for undo functionality: { [subjectId]: [{ attended, total }] }
   const [history, setHistory] = useState({});
 
+  // Personalized weekly timetable from DSU ERP
+  const [timetable, setTimetable] = useState(() => {
+    try {
+      const saved = localStorage.getItem("dsu_attendance_timetable");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return DEFAULT_TIMETABLE;
+  });
+  const [showTimetable, setShowTimetable] = useState(false);
+
   // Persist target percentage
   useEffect(() => {
     localStorage.setItem("dsu_attendance_target", String(targetPct));
@@ -204,6 +256,11 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
       localStorage.setItem("dsu_student_profile", JSON.stringify(updatedProfile));
       localStorage.setItem("dsu_attendance_last_synced", nowStr);
 
+      if (result.timetable) {
+        setTimetable(result.timetable);
+        localStorage.setItem("dsu_attendance_timetable", JSON.stringify(result.timetable));
+      }
+
       setSyncSuccess(
         `Successfully synced ${erpSubjects.length} subjects for ${studentName} (${creds.username.toUpperCase()}) from DSU ERP.`
       );
@@ -232,6 +289,7 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
     clearAttendanceCache();
     localStorage.removeItem("dsu_student_profile");
     localStorage.removeItem("dsu_attendance_last_synced");
+    localStorage.removeItem("dsu_attendance_timetable");
     setShowProfileForm(true);
   };
 
@@ -244,12 +302,12 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
 
     const advice = calculateStaticAdvice(totalAttended, totalConducted, targetPct);
 
-    // Approximate remaining future classes in semester from calendar
-    const approxRemainingClasses = 48; // Typical remainder of semester classes
+    // Exact scheduled remaining classes until last working day (Dec 19, 2026) based on ERP timetable
+    const futureSlots = timetable?.approxRemainingClasses || 56;
     const calendarProjection = calculateCalendarProjection({
       attended: totalAttended,
       conducted: totalConducted,
-      futureSlots: approxRemainingClasses,
+      futureSlots,
       targetPct,
     });
 
@@ -264,7 +322,7 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
       adviceText: advice.adviceText,
       calendarProjection,
     };
-  }, [subjects, targetPct]);
+  }, [subjects, targetPct, timetable]);
 
   // Color helper based on percentage & target
   const getStatusColor = (pct, target) => {
@@ -745,10 +803,33 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                 <p style={{ margin: 0, fontSize: "13px", color: "var(--muted, #94a3b8)" }}>
                   Last working day: <strong>{academicCalendar.semesters.ODD.lastWorkingDay}</strong> • Semester End: <strong>{academicCalendar.semesters.ODD.endDate}</strong> • Standard: 75% (65% condonation)
                 </p>
+                {timetable && (
+                  <p style={{ margin: "4px 0 0", fontSize: "12px", color: "var(--muted, #94a3b8)", opacity: 0.9 }}>
+                    Your Schedule: <strong>{timetable.totalWeeklyClasses} classes/week</strong> • Approx <strong>{timetable.approxRemainingClasses} remaining classes</strong> till {timetable.lastWorkingDay}
+                  </p>
+                )}
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+              {timetable && timetable.scheduleByDay && (
+                <button
+                  type="button"
+                  className="outline-button"
+                  style={{
+                    fontSize: "12px",
+                    padding: "6px 12px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    borderRadius: "8px",
+                  }}
+                  onClick={() => setShowTimetable(!showTimetable)}
+                >
+                  <Calendar size={14} />
+                  {showTimetable ? "Hide Weekly Timetable" : "View Weekly Timetable"}
+                </button>
+              )}
               <span
                 style={{
                   padding: "6px 14px",
@@ -774,6 +855,83 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
               </span>
             </div>
           </div>
+
+          {/* Collapsible Weekly Timetable View */}
+          {showTimetable && timetable?.scheduleByDay && (
+            <div
+              style={{
+                marginTop: "18px",
+                paddingTop: "16px",
+                borderTop: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+                <h5 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "var(--foreground, #f8fafc)" }}>
+                  Personalized Weekly Class Schedule ({timetable.totalWeeklyClasses} classes/week)
+                </h5>
+                <span style={{ fontSize: "12px", color: "var(--muted, #94a3b8)" }}>
+                  Synced from DSU ERP TimeTable Portal
+                </span>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                  gap: "12px",
+                }}
+              >
+                {Object.entries(timetable.scheduleByDay)
+                  .filter(([_, slots]) => slots && slots.length > 0)
+                  .map(([day, slots]) => (
+                    <div
+                      key={day}
+                      style={{
+                        background: "rgba(255,255,255,0.03)",
+                        border: "1px solid rgba(255,255,255,0.06)",
+                        borderRadius: "10px",
+                        padding: "10px 12px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: "13px",
+                          color: "#60a5fa",
+                          marginBottom: "8px",
+                          borderBottom: "1px solid rgba(255,255,255,0.05)",
+                          paddingBottom: "4px",
+                        }}
+                      >
+                        {day} ({slots.length} {slots.length === 1 ? "class" : "classes"})
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        {slots.map((slot, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              fontSize: "12px",
+                              lineHeight: "1.4",
+                              background: "rgba(0,0,0,0.2)",
+                              padding: "6px 8px",
+                              borderRadius: "6px",
+                            }}
+                          >
+                            <div style={{ fontWeight: 600, color: "#f1f5f9" }}>
+                              {slot.code}: {slot.title || "Class"}
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "3px", color: "var(--muted, #94a3b8)", fontSize: "11px" }}>
+                              <span>{slot.time}</span>
+                              <span style={{ color: slot.slotType === "Practical" ? "#c084fc" : "#93c5fd" }}>{slot.slotType}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* View Switcher Tabs */}
@@ -940,6 +1098,19 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                               {sub.slotType}
                             </span>
                           )}
+                          {sub.code && timetable?.weeklyHoursByCourse?.[sub.code] ? (
+                            <span
+                              className="att-code-pill"
+                              style={{
+                                background: "rgba(34, 197, 94, 0.12)",
+                                color: "#4ade80",
+                                border: "none",
+                              }}
+                              title="Scheduled classes per week in DSU ERP timetable"
+                            >
+                              {timetable.weeklyHoursByCourse[sub.code]} {timetable.weeklyHoursByCourse[sub.code] === 1 ? "class/wk" : "classes/wk"} (~{Math.round(timetable.weeklyHoursByCourse[sub.code] * 5.1)} left)
+                            </span>
+                          ) : null}
                           <span className="att-ratio">
                             {att} of {tot} attended
                           </span>

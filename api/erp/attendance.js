@@ -16,6 +16,7 @@ import { Buffer } from 'node:buffer';
 const getDsuErpBase = () => process.env.DSU_ERP_BASE_URL || 'https://ums.mydsi.org';
 const LOGIN_PATH = '/Login.aspx/DSU';
 const ATTENDANCE_PATH = '/StudentPanel/TTM_Attendance/TTM_Attendance_StudentAttendance.aspx';
+const TIMETABLE_PATH = '/StudentPanel/TTM_TimeTable/TTM_TimeTable_StudentTimeTable.aspx';
 const DEFAULT_TIMEOUT_MS = 5000;
 
 const COMMON_HEADERS = {
@@ -293,6 +294,103 @@ export async function fetchAttendanceHtml(cookieHeader, options = {}) {
   }
 
   return await attRes.text();
+}
+
+/**
+ * Step 4: Fetch student timetable HTML from DSU ERP portal.
+ */
+export async function fetchTimeTableHtml(cookieHeader, options = {}) {
+  const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
+  const baseUrl = options.baseUrl || getDsuErpBase();
+  const ttUrl = `${baseUrl}${TIMETABLE_PATH}`;
+
+  const ttRes = await fetch(ttUrl, {
+    method: 'GET',
+    headers: {
+      ...COMMON_HEADERS,
+      'Cookie': cookieHeader,
+      'Referer': `${baseUrl}/StudentPanel/StudentDashboard.aspx`,
+    },
+    redirect: 'manual',
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+
+  if (!ttRes.ok) {
+    throw new Error(`Timetable fetch failed with status ${ttRes.status}`);
+  }
+
+  return await ttRes.text();
+}
+
+/**
+ * Parse weekly class schedule and remaining class hours from #sample_1 timetable.
+ */
+export function parseTimeTableHtml(html) {
+  if (!html || typeof html !== 'string') return null;
+
+  const tIdx = html.indexOf('id="sample_1"');
+  if (tIdx === -1) return null;
+  const tEnd = html.indexOf('</table>', tIdx);
+  const tableHtml = html.substring(tIdx, tEnd + 8);
+
+  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rMatch;
+  const rows = [];
+  while ((rMatch = rowRegex.exec(tableHtml)) !== null) {
+    const rowContent = rMatch[1];
+    const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+    let cMatch;
+    const cells = [];
+    while ((cMatch = cellRegex.exec(rowContent)) !== null) {
+      cells.push(cMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+    }
+    rows.push(cells);
+  }
+
+  if (rows.length < 2) return null;
+
+  const days = rows[0].slice(1);
+  const scheduleByDay = { Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [] };
+  const weeklyHoursByCourse = {};
+  let totalWeeklyClasses = 0;
+
+  for (let r = 1; r < rows.length; r++) {
+    const timeSlot = rows[r][0];
+    for (let c = 1; c < rows[r].length; c++) {
+      const cellText = rows[r][c];
+      if (!cellText || cellText.includes('Break') || cellText.includes('Holiday')) continue;
+
+      const dayName = days[c - 1]?.split(' ')[0] || `Day_${c}`;
+      const codeMatch = cellText.match(/26EN\d{4}|[A-Z0-9]{5,10}/i);
+      const code = codeMatch ? codeMatch[0].toUpperCase() : 'OTHER';
+
+      const isLab = cellText.toLowerCase().includes('laboratory') || cellText.toLowerCase().includes('lab');
+      const slotType = isLab ? 'Practical' : 'Theory';
+      const title = cellText.split('{')[0].trim();
+
+      if (!weeklyHoursByCourse[code]) weeklyHoursByCourse[code] = 0;
+      weeklyHoursByCourse[code]++;
+      totalWeeklyClasses++;
+
+      if (scheduleByDay[dayName]) {
+        scheduleByDay[dayName].push({ code, title, time: timeSlot, slotType });
+      }
+    }
+  }
+
+  // Current year is 2026. Remaining weeks until Dec 19, 2026 is ~5.1 weeks
+  const remainingWeeks = 5.1;
+  const approxRemainingClasses = Math.round(totalWeeklyClasses * remainingWeeks);
+
+  return {
+    scheduleByDay,
+    weeklyHoursByCourse,
+    totalWeeklyClasses,
+    approxRemainingClasses,
+    lastWorkingDay: '2026-12-19',
+    semesterEndDate: '2026-12-24',
+    academicYear: '2026-2027',
+  };
 }
 
 /**
@@ -594,7 +692,47 @@ export default async function handler(req, res) {
             { id: '26EN1107_practical', code: '26EN1107', name: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRODUCTION TO C (Practical)', baseName: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRODUCTION TO C', slotType: 'Practical', conducted: 1, attended: 1, absent: 0, percentage: 100 },
             { id: '26EN1111_theory', code: '26EN1111', name: 'ENVIRONMENTAL SCIENCE (Theory)', baseName: 'ENVIRONMENTAL SCIENCE', slotType: 'Theory', conducted: 17, attended: 11, absent: 6, percentage: 64.71 },
             { id: '26EN1112_theory', code: '26EN1112', name: 'INDIAN CONSTITUTION & LAW (Theory)', baseName: 'INDIAN CONSTITUTION & LAW', slotType: 'Theory', conducted: 2, attended: 2, absent: 0, percentage: 100 }
-          ]
+          ],
+          timetable: {
+            academicYear: '2026-2027',
+            lastWorkingDay: '2026-12-19',
+            semesterEndDate: '2026-12-24',
+            totalWeeklyClasses: 11,
+            approxRemainingClasses: 56,
+            weeklyHoursByCourse: {
+              '26EN1105': 2,
+              '26EN1111': 2,
+              '26EN1110': 1,
+              '26EN1107': 2,
+              '26EN1102': 2,
+              '26EN1101': 1,
+              '26EN1112': 1
+            },
+            scheduleByDay: {
+              Monday: [
+                { code: '26EN1107', title: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRO TO C', time: '09:30 AM to 10:30 AM', slotType: 'Theory' },
+                { code: '26EN1111', title: 'ENVIRONMENTAL SCIENCE', time: '11:50 AM to 12:40 PM', slotType: 'Theory' },
+                { code: '26EN1102', title: 'ENGINEERING CHEMISTRY FOR CS CLUSTER', time: '02:45 PM to 03:35 PM', slotType: 'Practical' }
+              ],
+              Tuesday: [
+                { code: '26EN1101', title: 'LINEAR ALGEBRA AND DATA FOUNDATIONS', time: '11:50 AM to 12:40 PM', slotType: 'Theory' },
+                { code: '26EN1107', title: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRO TO C', time: '12:40 PM to 01:30 PM', slotType: 'Theory' }
+              ],
+              Wednesday: [
+                { code: '26EN1105', title: 'ENGINEERING GRAPHICS & GENERATIVE DESIGN', time: '08:30 AM to 09:30 AM', slotType: 'Theory' },
+                { code: '26EN1102', title: 'ENGINEERING CHEMISTRY FOR CS CLUSTER', time: '09:30 AM to 10:30 AM', slotType: 'Theory' },
+                { code: '26EN1105', title: 'ENGINEERING GRAPHICS & GENERATIVE DESIGN', time: '11:50 AM to 12:40 PM', slotType: 'Theory' },
+                { code: '26EN1112', title: 'INDIAN CONSTITUTION & LAW', time: '12:40 PM to 01:30 PM', slotType: 'Theory' }
+              ],
+              Thursday: [
+                { code: '26EN1111', title: 'ENVIRONMENTAL SCIENCE', time: '08:30 AM to 09:30 AM', slotType: 'Theory' }
+              ],
+              Friday: [
+                { code: '26EN1110', title: 'DESIGN STUDIO I: ENGINEERING PROBLEM SOLVING', time: '08:30 AM to 09:30 AM', slotType: 'Theory' }
+              ],
+              Saturday: []
+            }
+          }
         });
       }
 
@@ -608,6 +746,7 @@ export default async function handler(req, res) {
     let studentName = 'Student';
     let overall = { conducted: 0, attended: 0, absent: 0, percentage: 0 };
     let subjects = [];
+    let timetable = null;
 
     try {
       const html = await fetchAttendanceHtml(authResult.cookieHeader);
@@ -616,8 +755,14 @@ export default async function handler(req, res) {
       overall = parsed.overall || overall;
       subjects = parsed.subjects || [];
     } catch {
-      // Non-fatal: if attendance page retrieval has a transient error, authentication itself succeeded
       studentName = 'Student';
+    }
+
+    try {
+      const ttHtml = await fetchTimeTableHtml(authResult.cookieHeader);
+      timetable = parseTimeTableHtml(ttHtml);
+    } catch (ttErr) {
+      console.warn('Timetable fetch optional warning:', ttErr.message);
     }
 
     return sendJsonResponse(res, 200, {
@@ -628,6 +773,7 @@ export default async function handler(req, res) {
       usn: username.trim(),
       overall,
       subjects,
+      timetable,
     });
   } catch (error) {
     const isTimeout = error.name === 'TimeoutError' || error.name === 'AbortError';

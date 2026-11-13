@@ -102,7 +102,47 @@ export async function fetchAttendance(credentials, options = {}) {
         { id: '26EN1107_practical', code: '26EN1107', name: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRODUCTION TO C (Practical)', baseName: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRODUCTION TO C', slotType: 'Practical', conducted: 1, attended: 1, absent: 0, percentage: 100 },
         { id: '26EN1111_theory', code: '26EN1111', name: 'ENVIRONMENTAL SCIENCE (Theory)', baseName: 'ENVIRONMENTAL SCIENCE', slotType: 'Theory', conducted: 17, attended: 11, absent: 6, percentage: 64.71 },
         { id: '26EN1112_theory', code: '26EN1112', name: 'INDIAN CONSTITUTION & LAW (Theory)', baseName: 'INDIAN CONSTITUTION & LAW', slotType: 'Theory', conducted: 2, attended: 2, absent: 0, percentage: 100 }
-      ]
+      ],
+      timetable: {
+        academicYear: '2026-2027',
+        lastWorkingDay: '2026-12-19',
+        semesterEndDate: '2026-12-24',
+        totalWeeklyClasses: 11,
+        approxRemainingClasses: 56,
+        weeklyHoursByCourse: {
+          '26EN1105': 2,
+          '26EN1111': 2,
+          '26EN1110': 1,
+          '26EN1107': 2,
+          '26EN1102': 2,
+          '26EN1101': 1,
+          '26EN1112': 1
+        },
+        scheduleByDay: {
+          Monday: [
+            { code: '26EN1107', title: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRO TO C', time: '09:30 AM to 10:30 AM', slotType: 'Theory' },
+            { code: '26EN1111', title: 'ENVIRONMENTAL SCIENCE', time: '11:50 AM to 12:40 PM', slotType: 'Theory' },
+            { code: '26EN1102', title: 'ENGINEERING CHEMISTRY FOR CS CLUSTER', time: '02:45 PM to 03:35 PM', slotType: 'Practical' }
+          ],
+          Tuesday: [
+            { code: '26EN1101', title: 'LINEAR ALGEBRA AND DATA FOUNDATIONS', time: '11:50 AM to 12:40 PM', slotType: 'Theory' },
+            { code: '26EN1107', title: 'ENGINEERING SCIENCE COURSE II FOR CS - INTRO TO C', time: '12:40 PM to 01:30 PM', slotType: 'Theory' }
+          ],
+          Wednesday: [
+            { code: '26EN1105', title: 'ENGINEERING GRAPHICS & GENERATIVE DESIGN', time: '08:30 AM to 09:30 AM', slotType: 'Theory' },
+            { code: '26EN1102', title: 'ENGINEERING CHEMISTRY FOR CS CLUSTER', time: '09:30 AM to 10:30 AM', slotType: 'Theory' },
+            { code: '26EN1105', title: 'ENGINEERING GRAPHICS & GENERATIVE DESIGN', time: '11:50 AM to 12:40 PM', slotType: 'Theory' },
+            { code: '26EN1112', title: 'INDIAN CONSTITUTION & LAW', time: '12:40 PM to 01:30 PM', slotType: 'Theory' }
+          ],
+          Thursday: [
+            { code: '26EN1111', title: 'ENVIRONMENTAL SCIENCE', time: '08:30 AM to 09:30 AM', slotType: 'Theory' }
+          ],
+          Friday: [
+            { code: '26EN1110', title: 'DESIGN STUDIO I: ENGINEERING PROBLEM SOLVING', time: '08:30 AM to 09:30 AM', slotType: 'Theory' }
+          ],
+          Saturday: []
+        }
+      }
     };
     return verifiedSnapshot;
   }
