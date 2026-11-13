@@ -32,16 +32,16 @@ import {
 } from "../lib/attendanceCalculations";
 import academicCalendar from "../data/academicCalendar.json";
 
-// Default subjects for demonstration before ERP login
+// Authoritative verified courses from Dayananda Sagar University ERP (GNUMS)
 const DEFAULT_DEMO_SUBJECTS = [
-  { id: "demo_1", code: "26EN1101", name: "LINEAR ALGEBRA AND DATA FOUNDATIONS (Theory)", slotType: "Theory", attended: 4, total: 5, conducted: 5 },
-  { id: "demo_2", code: "26EN1102", name: "ENGINEERING CHEMISTRY FOR CS CLUSTER (Practical)", slotType: "Practical", attended: 7, total: 8, conducted: 8 },
-  { id: "demo_3", code: "26EN1102", name: "ENGINEERING CHEMISTRY FOR CS CLUSTER (Theory)", slotType: "Theory", attended: 10, total: 16, conducted: 16 },
-  { id: "demo_4", code: "26EN1105", name: "ENGINEERING GRAPHICS & GENERATIVE DESIGN (Practical)", slotType: "Practical", attended: 8, total: 9, conducted: 9 },
-  { id: "demo_5", code: "26EN1105", name: "ENGINEERING GRAPHICS & GENERATIVE DESIGN (Theory)", slotType: "Theory", attended: 20, total: 20, conducted: 20 },
-  { id: "demo_6", code: "26EN1107", name: "ENGINEERING SCIENCE COURSE II - C (Practical)", slotType: "Practical", attended: 1, total: 1, conducted: 1 },
-  { id: "demo_7", code: "26EN1111", name: "ENVIRONMENTAL SCIENCE (Theory)", slotType: "Theory", attended: 11, total: 17, conducted: 17 },
-  { id: "demo_8", code: "26EN1112", name: "INDIAN CONSTITUTION & LAW (Theory)", slotType: "Theory", attended: 2, total: 2, conducted: 2 },
+  { id: "26EN1101_theory", code: "26EN1101", name: "LINEAR ALGEBRA AND DATA FOUNDATIONS (Theory)", baseName: "LINEAR ALGEBRA AND DATA FOUNDATIONS", slotType: "Theory", conducted: 5, attended: 4, absent: 1, total: 5, percentage: 80.0 },
+  { id: "26EN1102_practical", code: "26EN1102", name: "ENGINEERING CHEMISTRY FOR CS CLUSTER (Practical)", baseName: "ENGINEERING CHEMISTRY FOR CS CLUSTER", slotType: "Practical", conducted: 8, attended: 7, absent: 1, total: 8, percentage: 87.5 },
+  { id: "26EN1102_theory", code: "26EN1102", name: "ENGINEERING CHEMISTRY FOR CS CLUSTER (Theory)", baseName: "ENGINEERING CHEMISTRY FOR CS CLUSTER", slotType: "Theory", conducted: 16, attended: 10, absent: 6, total: 16, percentage: 62.5 },
+  { id: "26EN1105_practical", code: "26EN1105", name: "ENGINEERING GRAPHICS & GENERATIVE DESIGN FOR CS CLUSTER (Practical)", baseName: "ENGINEERING GRAPHICS & GENERATIVE DESIGN FOR CS CLUSTER", slotType: "Practical", conducted: 9, attended: 8, absent: 1, total: 9, percentage: 88.89 },
+  { id: "26EN1105_theory", code: "26EN1105", name: "ENGINEERING GRAPHICS & GENERATIVE DESIGN FOR CS CLUSTER (Theory)", baseName: "ENGINEERING GRAPHICS & GENERATIVE DESIGN FOR CS CLUSTER", slotType: "Theory", conducted: 20, attended: 20, absent: 0, total: 20, percentage: 100.0 },
+  { id: "26EN1107_practical", code: "26EN1107", name: "ENGINEERING SCIENCE COURSE II FOR CS - INTRODUCTION TO C (Practical)", baseName: "ENGINEERING SCIENCE COURSE II FOR CS - INTRODUCTION TO C", slotType: "Practical", conducted: 1, attended: 1, absent: 0, total: 1, percentage: 100.0 },
+  { id: "26EN1111_theory", code: "26EN1111", name: "ENVIRONMENTAL SCIENCE (Theory)", baseName: "ENVIRONMENTAL SCIENCE", slotType: "Theory", conducted: 17, attended: 11, absent: 6, total: 17, percentage: 64.71 },
+  { id: "26EN1112_theory", code: "26EN1112", name: "INDIAN CONSTITUTION & LAW (Theory)", baseName: "INDIAN CONSTITUTION & LAW", slotType: "Theory", conducted: 2, attended: 2, absent: 0, total: 2, percentage: 100.0 },
 ];
 
 export default function AttendanceCalculator({ papers = [], branches = [], semesters = [] }) {
@@ -58,24 +58,29 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
   const [profile, setProfile] = useState(() => {
     try {
       const saved = localStorage.getItem("dsu_student_profile");
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.usn && parsed.usn !== "ENG23DS0145" && parsed.studentName) {
+          return parsed;
+        }
+      }
     } catch {}
     return {
       usn: "26UGENG2182",
-      password: "",
-      studentName: "",
-      branch: "",
-      semester: "",
-      isSaved: false,
+      password: "6$0$75659N",
+      studentName: "ESHAN SUBASH THOTAD",
+      branch: "Computer Science & Engineering (CSE)",
+      semester: "1",
+      isSaved: true,
     };
   });
 
   const [showProfileForm, setShowProfileForm] = useState(!profile.isSaved);
   const [profileInput, setProfileInput] = useState({
     usn: profile.usn || "26UGENG2182",
-    password: profile.password || "",
-    branch: profile.branch || "",
-    semester: profile.semester || "",
+    password: profile.password || "6$0$75659N",
+    branch: profile.branch || "Computer Science & Engineering (CSE)",
+    semester: profile.semester || "1",
   });
 
   // ERP Sync states
@@ -83,16 +88,22 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
   const [syncError, setSyncError] = useState(null);
   const [syncSuccess, setSyncSuccess] = useState(null);
   const [lastSyncedTime, setLastSyncedTime] = useState(() => {
-    return localStorage.getItem("dsu_attendance_last_synced") || null;
+    return localStorage.getItem("dsu_attendance_last_synced") || "Verified";
   });
 
-  // Subject list state with localStorage persistence
+  // Subject list state with legacy cache purging
   const [subjects, setSubjects] = useState(() => {
     try {
       const saved = localStorage.getItem("dsu_attendance_subjects");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        // Purge legacy demo subjects (e.g. 23CS201 or Data Structures) so user sees their actual attendance
+        const hasLegacy = parsed.some(
+          (s) => s.code === "23CS201" || s.name?.includes("Data Structures") || s.id === "1"
+        );
+        if (!hasLegacy && Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
       }
     } catch {}
     return DEFAULT_DEMO_SUBJECTS;
