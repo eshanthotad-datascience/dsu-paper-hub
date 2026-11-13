@@ -107,32 +107,33 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
   const [activeTab, setActiveTab] = useState("tracker");
 
   // Student credentials profile state
+  // Student credentials profile state (session-only, never persisted across users)
   const [profile, setProfile] = useState(() => {
     try {
-      const saved = localStorage.getItem("dsu_student_profile");
+      const saved = sessionStorage.getItem("dsu_student_profile");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.usn && parsed.usn !== "ENG23DS0145" && parsed.studentName) {
+        if (parsed.usn && parsed.isSaved && parsed.studentName) {
           return parsed;
         }
       }
     } catch {}
     return {
-      usn: "26UGENG2182",
-      password: "6$0$75659N",
-      studentName: "ESHAN SUBASH THOTAD",
-      branch: "Computer Science & Engineering (CSE)",
-      semester: "1",
-      isSaved: true,
+      usn: "",
+      password: "",
+      studentName: "",
+      branch: "",
+      semester: "",
+      isSaved: false,
     };
   });
 
   const [showProfileForm, setShowProfileForm] = useState(!profile.isSaved);
   const [profileInput, setProfileInput] = useState({
-    usn: profile.usn || "26UGENG2182",
-    password: profile.password || "6$0$75659N",
-    branch: profile.branch || "Computer Science & Engineering (CSE)",
-    semester: profile.semester || "1",
+    usn: profile.usn || "",
+    password: profile.password || "",
+    branch: profile.branch || "",
+    semester: profile.semester || "",
   });
 
   // ERP Sync states
@@ -140,8 +141,17 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
   const [syncError, setSyncError] = useState(null);
   const [syncSuccess, setSyncSuccess] = useState(null);
   const [lastSyncedTime, setLastSyncedTime] = useState(() => {
-    return localStorage.getItem("dsu_attendance_last_synced") || "Verified";
+    return sessionStorage.getItem("dsu_attendance_last_synced") || null;
   });
+
+  // Automatic privacy cleanup: purge any previous user credentials from localStorage
+  useEffect(() => {
+    try {
+      localStorage.removeItem("dsu_student_profile");
+      localStorage.removeItem("dsu_student_creds");
+      localStorage.removeItem("dsu_attendance_last_synced");
+    } catch {}
+  }, []);
 
   // Subject list state with legacy cache purging
   const [subjects, setSubjects] = useState(() => {
@@ -263,12 +273,16 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
       setProfile(updatedProfile);
       setLastSyncedTime(nowStr);
       setShowProfileForm(false);
-      localStorage.setItem("dsu_student_profile", JSON.stringify(updatedProfile));
-      localStorage.setItem("dsu_attendance_last_synced", nowStr);
+      // Save strictly to sessionStorage for current tab session only
+      sessionStorage.setItem("dsu_student_profile", JSON.stringify(updatedProfile));
+      sessionStorage.setItem("dsu_attendance_last_synced", nowStr);
+      // Remove from permanent localStorage so other visitors cannot access it
+      localStorage.removeItem("dsu_student_profile");
+      localStorage.removeItem("dsu_student_creds");
 
       if (result.timetable) {
         setTimetable(result.timetable);
-        localStorage.setItem("dsu_attendance_timetable", JSON.stringify(result.timetable));
+        sessionStorage.setItem("dsu_attendance_timetable", JSON.stringify(result.timetable));
       }
 
       setSyncSuccess(
@@ -281,7 +295,7 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
     }
   };
 
-  // Disconnect profile and reset session
+  // Disconnect profile, erase credentials, and reset session
   const handleDisconnectProfile = () => {
     const empty = {
       usn: "",
@@ -296,10 +310,15 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
     setSyncSuccess(null);
     setSyncError(null);
     setLastSyncedTime(null);
+    setSubjects(DEFAULT_DEMO_SUBJECTS);
+    setTimetable(DEFAULT_TIMETABLE);
     clearAttendanceCache();
+    sessionStorage.clear();
     localStorage.removeItem("dsu_student_profile");
+    localStorage.removeItem("dsu_student_creds");
     localStorage.removeItem("dsu_attendance_last_synced");
     localStorage.removeItem("dsu_attendance_timetable");
+    localStorage.removeItem("dsu_attendance_subjects");
     setShowProfileForm(true);
   };
 
@@ -667,7 +686,7 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                 </span>
               </div>
               <button className="att-disconnect-btn" onClick={handleDisconnectProfile}>
-                Disconnect
+                Log Out & Erase Data
               </button>
             </div>
           )}
@@ -679,7 +698,7 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                 <label className="field">
                   <span>Student USN / SRN *</span>
                   <input
-                    placeholder="e.g. 26UGENG2182"
+                    placeholder="Enter your USN (e.g. 26UGENG2182)"
                     value={profileInput.usn}
                     onChange={(e) => setProfileInput({ ...profileInput, usn: e.target.value })}
                     required
@@ -689,7 +708,7 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                   <span>DSU ERP Password *</span>
                   <input
                     type="password"
-                    placeholder="Enter DSU portal password"
+                    placeholder="Enter your DSU portal password"
                     value={profileInput.password}
                     onChange={(e) => setProfileInput({ ...profileInput, password: e.target.value })}
                     required
@@ -712,8 +731,9 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
                   <ShieldCheck size={16} />
                   <span>
                     <strong>Student Privacy Guarantee:</strong> Your credentials are sent securely
-                    over SSL only to Dayananda Sagar University GNUMS server for verification and are
-                    cached strictly inside your browser's private local storage.
+                    over SSL only to Dayananda Sagar University GNUMS server for verification. They
+                    are never saved to permanent storage or shared, and are automatically cleared
+                    when you close or leave the site.
                   </span>
                 </div>
               </div>
