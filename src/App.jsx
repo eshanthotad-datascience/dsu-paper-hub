@@ -188,12 +188,12 @@ export default function App() {
     <video ref={introVideo} className="intro-video" src="/eshxxn-intro.mp4" autoPlay playsInline aria-label="Anime edit background video" />
     <div className="intro-shade" />
     <section className="intro-content">
-      <p className="intro-kicker">DSU PAPER HUB</p>
+      <p className="intro-kicker">DSU HUB</p>
       <h1>MADE BY <span>ESHXXN <i>&amp;</i> ADARXXH</span></h1>
       <p className="intro-branch">CSE BRANCH</p>
-      <p className="intro-copy">A student-built space to find and share DSU question papers. Many features will be added in future updates. Stay tuned.</p>
+      <p className="intro-copy">A student-built platform to find DSU question papers, track live attendance &amp; calculate what-if bunking scenarios. Built by students, for students.</p>
       <div className="intro-actions">
-        <button className="intro-enter" onClick={leaveIntro}>Enter Paper Hub <ArrowRight size={18} /></button>
+        <button className="intro-enter" onClick={leaveIntro}>Enter DSU Hub <ArrowRight size={18} /></button>
         <button className="intro-attendance" onClick={goToAttendance}><Calculator size={18} /> Attendance Calculator</button>
         <button className="intro-sound" onClick={toggleIntroSound}>{soundEnabled ? <VolumeX size={18} /> : <Volume2 size={18} />}{soundEnabled ? "Mute sound" : "Enable sound"}</button>
       </div>
@@ -207,7 +207,7 @@ export default function App() {
   </main>;
 
   return <div className={`app-shell ${theme === "dark" ? "dark-theme" : ""}`}>
-    <header className="site-header"><button className="brand" onClick={() => setPage("browse")}><span className="brand-icon"><BookOpen size={20} /></span>DSU Paper Hub</button><nav><button className="theme-button" onClick={() => setTheme((current) => current === "light" ? "dark" : "light")} aria-label="Change colour theme">{theme === "light" ? <Moon size={18} /> : <Sun size={18} />}</button><button className={page === "browse" ? "nav-link active" : "nav-link"} onClick={() => setPage("browse")}>Browse papers</button><button className={page === "attendance" ? "nav-link active" : "nav-link"} onClick={() => setPage("attendance")}>Attendance</button><button className={page === "upload" ? "nav-link active" : "nav-link"} onClick={() => setPage("upload")}>Upload</button></nav></header>
+    <header className="site-header"><button className="brand" onClick={() => setPage("browse")}><span className="brand-icon"><BookOpen size={20} /></span>DSU Hub</button><nav><button className="theme-button" onClick={() => setTheme((current) => current === "light" ? "dark" : "light")} aria-label="Change colour theme">{theme === "light" ? <Moon size={18} /> : <Sun size={18} />}</button><button className={page === "browse" ? "nav-link active" : "nav-link"} onClick={() => setPage("browse")}>Browse papers</button><button className={page === "attendance" ? "nav-link active" : "nav-link"} onClick={() => setPage("attendance")}>Attendance</button><button className={page === "upload" ? "nav-link active" : "nav-link"} onClick={() => setPage("upload")}>Upload</button></nav></header>
     {page === "browse" && <main>
       <section className="browse-hero"><h1>Find the question papers you need</h1><p>Papers shared by Dayananda Sagar University students. Search,<br />preview and download, no login needed.</p><div className="search-box"><Search size={21} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by subject name or code" /><button>Search</button></div></section>
       <section className="library"><div className="paper-search-title"><div><h2>Search papers</h2><p>Filter by branch, year, semester, exam year, or paper type.</p></div><span>Use the search bar above for subject name, code, year, or branch.</span></div><div className="filter-panel"><SelectField label="Branch" value={filters.branch} onChange={setFilter("branch")}><option value="">All branches</option>{branches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}</SelectField><SelectField label="Year" value={filters.year} onChange={setFilter("year")}><option value="">All years</option>{years.map((y) => <option key={y.value} value={y.value}>{y.label}</option>)}</SelectField><SelectField label="Semester" value={filters.semester} onChange={setFilter("semester")}><option value="">All semesters</option>{semesters.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}</SelectField><SelectField label="Exam Year" value={filters.examYear} onChange={setFilter("examYear")}><option value="">All exam years</option>{examYears.map((ey) => <option key={ey} value={ey}>{ey}</option>)}</SelectField><SelectField label="Paper type" value={filters.type} onChange={setFilter("type")}><option value="">All types</option><option>Mid Semester</option><option>End Semester</option></SelectField><button className="outline-button reset" onClick={resetFilters}>Reset</button></div>

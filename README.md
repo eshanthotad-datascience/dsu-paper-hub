@@ -1,27 +1,23 @@
-# DSU Paper Hub
+# DSU Hub
 
 ### Find it. Share it. Help the next batch.
 
-DSU Paper Hub is a student-built platform that makes it easier for Dayananda Sagar University students to find, upload, preview, and download previous question papers.
+DSU Hub is a student-built all-in-one platform for Dayananda Sagar University students: find, upload, preview, and download previous question papers, alongside a real-time DSU ERP Attendance Tracker & What-If Bunking Calculator.
 
 ## What you can do
 
-- Search papers by subject name or subject code
-- Filter by branch, cycle, semester, exam year, and paper type
-- Upload PDFs and PNGs without creating an account
-- Browse Chemistry and Physics cycle papers
-- Preview or download available papers directly
-- Access files stored securely in Google Drive
+- **Question Paper Hub**: Search papers by subject name or subject code, filter by branch, cycle, semester, and exam year.
+- **Attendance Tracker**: Synchronize your live ERP attendance profile, view theory and practical contacts, and calculate bunk/recovery scenarios.
+- **Weekly Schedule**: Personalized class timetable straight from the university portal.
+- **Public Contributions**: Upload PDFs and PNGs without creating an account.
 
 ## Built for DSU students
 
-Every uploaded paper can help juniors prepare better for upcoming exams. The platform keeps paper details searchable while files are stored in Google Drive.
+Made by students, for students.
 
-### Made by students, for students.
+> DSU Hub is an independent student project and is not an official Dayananda Sagar University website.
 
-> DSU Paper Hub is not an official Dayananda Sagar University website.
-
-WEB LINK :- https://dsu-paper-hub-l31l.vercel.app/
+**Live Web Link**: https://dsu-hub.vercel.app/ (or https://dsu-paper-hub-l31l.vercel.app/)
 
 
 # React + Vite
