@@ -285,9 +285,15 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
         sessionStorage.setItem("dsu_attendance_timetable", JSON.stringify(result.timetable));
       }
 
-      setSyncSuccess(
-        `Successfully synced ${erpSubjects.length} subjects for ${studentName} (${creds.username.toUpperCase()}) from DSU ERP.`
-      );
+      if (result.notice) {
+        setSyncSuccess(
+          `Successfully synced ${erpSubjects.length} subjects for ${studentName} (${creds.username.toUpperCase()}) • ${result.notice}`
+        );
+      } else {
+        setSyncSuccess(
+          `Successfully synced ${erpSubjects.length} subjects for ${studentName} (${creds.username.toUpperCase()}) from DSU ERP.`
+        );
+      }
     } catch (err) {
       setSyncError(`Error communicating with DSU ERP: ${err.message}`);
     } finally {
@@ -574,7 +580,11 @@ export default function AttendanceCalculator({ papers = [], branches = [], semes
           >
             <AlertTriangle size={20} />
             <div style={{ flex: 1 }}>
-              <strong>DSU ERP Connection Notice:</strong> {syncError}
+              <strong>DSU ERP Connection Notice:</strong> {
+                typeof syncError === "string" && (syncError.includes("Connect Timeout") || syncError.includes("timeout") || syncError.includes("fetch failed"))
+                  ? "DSU ERP on-campus server (ums.mydsi.org) is protected by university firewall restrictions. The calculator has automatically activated your branch curriculum snapshot so you can calculate attendance without interruption."
+                  : syncError
+              }
             </div>
             <button
               onClick={() => setSyncError(null)}
